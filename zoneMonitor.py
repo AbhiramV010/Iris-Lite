@@ -12,11 +12,10 @@ def startCam():
     ret, frame = cam.read()
     if not ret: return
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    grassRange = cv2.inRange(hsv, np.array([35, 40, 40]), np.array([85, 255, 255]))
-    cv2.imshow("Camera Feed",frame)
+    grassRange = cv2.inRange(hsv, np.array([30, 20, 20]), np.array([90, 255, 255]))
 
 def defineZone(mask):
-    kernel = np.ones((7,7), np.uint8)
+    kernel = np.ones((7,7), np.uint8) #
     
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel) 
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
@@ -47,7 +46,7 @@ while True:
     if static_grass_zone is not None: 
         cv2.drawContours(frame, [static_grass_zone], -1, (255, 255, 255), 2)
 
-    cv2.imshow("Camera Feed", frame)
+    cv2.imshow("steamic26-cam", frame)
     
     if cv2.waitKey(1) == ord("x"): break 
     
