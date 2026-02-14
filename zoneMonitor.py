@@ -15,7 +15,7 @@ def startCam():
     grassRange = cv2.inRange(hsv, np.array([30, 20, 20]), np.array([90, 255, 255]))
 
 def defineZone(mask):
-    kernel = np.ones((7,7), np.uint8) #
+    kernel = np.ones((25,25), np.uint8) # Computer sees a field as many small patches of grass, but this merges it 
     
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel) 
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
