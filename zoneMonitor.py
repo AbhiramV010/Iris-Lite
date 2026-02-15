@@ -12,24 +12,21 @@ def startCam():
     if not ret: return
     
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    grassRange = cv2.inRange(hsv, np.array([25, 20, 20]), np.array([95, 255, 255]))
-
+    grassRange = cv2.inRange(hsv, np.array([35, 40, 40]), np.array([85, 255, 255]))    
 
 def defineZone(mask):
     kernel = np.ones((3,3), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+    mask=cv2.dilate(mask,kernel,iterations=1)
+    mask = cv2.erode(mask, kernel, iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask = cv2.dilate(mask, kernel, iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=4)
     
-    cv2.imshow("binMask",mask)
-
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours: return None
-
     field = max(contours, key=cv2.contourArea)
-
-    all_points = np.vstack(field)
-    epsilon = 0.02 * cv2.arcLength(all_points,True)
-    approx = cv2.approxPolyDP(all_points,epsilon,True)
+    epsilon = 0.02 * cv2.arcLength(field, True) 
+    approx = cv2.approxPolyDP(field, epsilon, True)
 
     return approx
 
@@ -58,4 +55,3 @@ while True:
     
 cam.release()
 cv2.destroyAllWindows()
-
