@@ -32,19 +32,21 @@ def perFrameGrass():
     # TODO:
     # check the presence of an moving object on the grass
         # bottom-most part of moving object MUST be on the grass, if not just disregard
-    # needs to be moving because people run on grass, bike bikes on grass, but a stationary tree doesn't need to be counted
+    # needs to be moving because people run on grass, bike bikes on grass, but a stationary tree doesn't need to be counted, ts supposed to be there
     pass 
 
 
 startCam()
-
 static_grass_zone = defineZone(grassRange)
 
 while True:
     ret, frame = cam.read()
-    if not ret: break
     if static_grass_zone is not None: 
-        cv2.drawContours(frame, [static_grass_zone], -1, (255, 255, 255), 2)
+        overlay = frame.copy()
+        cv2.drawContours(overlay, [static_grass_zone], -1, (220, 220, 220), thickness=-1)
+        cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+        cv2.drawContours(frame, [static_grass_zone], -1, (255, 255, 255), thickness=2)  
+    if not ret: break
 
     cv2.imshow("steamic26-cam", frame)
     
