@@ -15,7 +15,6 @@ def startCam():
 
 def defineZone(mask):
     kernel = np.ones((3,3), np.uint8)
-    
     mask=cv2.dilate(mask,kernel,iterations=1)
     mask = cv2.erode(mask, kernel, iterations=2)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
@@ -25,12 +24,7 @@ def defineZone(mask):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours: return None
 
-    min_area = (frame.shape[0] * frame.shape[1]) * 0.05
-    valid_contours = [c for c in contours if cv2.contourArea(c) > min_area] # filter out any green patches that take up less than 5% of screen space 
-
-    if not valid_contours: return None
-
-    field = max(valid_contours, key=cv2.contourArea)
+    field = max(contours, key=cv2.contourArea)
     epsilon = 0.02 * cv2.arcLength(field, True) 
     approx = cv2.approxPolyDP(field, epsilon, True)
 
