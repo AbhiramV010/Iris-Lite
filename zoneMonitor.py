@@ -7,24 +7,25 @@ def startCam():
     # fgbg = cv2.bgsegm.createBackgroundSubtractorCNT() # algorithm that already exists, using standard deviation to identify changes
     cam = cv2.VideoCapture(0)
     
-    for _ in range(30): cam.read() # short delay to prevent first frame from being all black
-        
+    for _ in range(30): cam.read() 
+    
     ret, frame = cam.read()
     if not ret: return
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    grassRange = cv2.inRange(hsv, np.array([30, 20, 20]), np.array([90, 255, 255]))
+    grassRange = cv2.inRange(hsv, np.array([30, 70, 20]), np.array([90, 255, 255]))
 
 def defineZone(mask):
-    kernel = np.ones((25,25), np.uint8) # Computer sees a field as many small patches of grass, but this merges it 
+    kernel = np.ones((9,9), np.uint8) # optimal matrice dimensions determined using a pixel ruler and sample image 
+
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) # NOTE: do not make the kernel bigger, use iteration with the same kernel 
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel) 
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours: return None
-
     field = max(contours, key=cv2.contourArea) # simplify object from 1000s of vertices to far less
     epsilon = 0.02 * cv2.arcLength(field, True)
     approx = cv2.approxPolyDP(field, epsilon, True)
+    cv2.imshow("hsvCam",hsv)
 
     return approx
 
