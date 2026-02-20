@@ -10,24 +10,24 @@ def startCam():
     
     ret, frame = cam.read()
     if not ret: return
-    
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    grassRange = cv2.inRange(hsv, np.array([35, 40, 40]), np.array([85, 255, 255]))    
+    grassRange = cv2.inRange(hsv, np.array([30, 45, 45]), np.array([95, 255, 255]))
 
 def defineZone(mask):
-    kernel = np.ones((3,3), np.uint8)
-    mask=cv2.dilate(mask,kernel,iterations=1)
-    mask = cv2.erode(mask, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-    mask = cv2.dilate(mask, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=4)
+    kernel = np.ones((9,9), np.uint8) # optimal matrice dimensions determined using a pixel ruler and sample image 
+
+    mask=cv2.dilate(mask,kernel,iterations=2)
+    mask=cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) # NOTE: do not make the kernel bigger, use iteration with the same kernel 
+    mask=cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours: return None
     field = max(contours, key=cv2.contourArea)
-    epsilon = 0.02 * cv2.arcLength(field, True) 
+    epsilon = 0.02 * cv2.arcLength(field, True)
     approx = cv2.approxPolyDP(field, epsilon, True)
 
+    epsilon = 0.02 * cv2.arcLength(hull, True)
+    approx = cv2.approxPolyDP(hull, epsilon, True)
     return approx
 
 def perFrameGrass(): 
@@ -40,18 +40,14 @@ def perFrameGrass():
 startCam()
 static_grass_zone = defineZone(grassRange)
 
-while True:
-    ret, frame = cam.read()
-    if static_grass_zone is not None: 
-        overlay = frame.copy()
-        cv2.drawContours(overlay, [static_grass_zone], -1, (220, 120, 120), thickness=-1)
-        cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
-        cv2.drawContours(frame, [static_grass_zone], -1, (255, 155, 155), thickness=2)  
-    if not ret: break
+frame_display = frame.copy()
 
-    cv2.imshow("steamic26-cam", frame)
-    
-    if cv2.waitKey(1) == ord("x"): break 
-    
-cam.release()
+if static_grass_zone is not None: 
+    overlay = frame_display.copy()
+    cv2.drawContours(overlay, [static_grass_zone], -1, (0, 0, 120), thickness=-1)
+    cv2.addWeighted(overlay, 0.5, frame_display, 0.5, 0, frame_display)
+    cv2.drawContours(frame_display, [static_grass_zone], -1, (0,0,255), thickness=2)
+
+cv2.imshow("steamic26-cam", frame_display)
+cv2.waitKey(0)
 cv2.destroyAllWindows()
