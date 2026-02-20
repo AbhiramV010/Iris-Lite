@@ -4,27 +4,20 @@ import numpy as np
 def startCam():
     global cam, ret, frame, hsv, grassRange, fgbg
 
-    fgbg = cv2.createBackgroundSubtractorKNN() # algorithm that already exists, using standard deviation to identify changes
-    cam = cv2.VideoCapture(0)
-    for _ in range(60): cam.read() 
-    
-    ret, frame = cam.read()
-    if not ret: return
+    frame = cv2.imread("C:\\Users\\abhir\\Downloads\\STEAMIC_TESTOG2.png")
+
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    grassRange = cv2.inRange(hsv, np.array([30, 45, 45]), np.array([95, 255, 255]))
+    grassRange = cv2.inRange(hsv, np.array([38, 80, 30]), np.array([80, 255, 180]))
 
 def defineZone(mask):
-    kernel = np.ones((9,9), np.uint8) # optimal matrice dimensions determined using a pixel ruler and sample image 
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
 
-    mask=cv2.dilate(mask,kernel,iterations=2)
-    mask=cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) # NOTE: do not make the kernel bigger, use iteration with the same kernel 
-    mask=cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    cv2.imshow("NO-PROCESSED?",mask)
     
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours: return None
     field = max(contours, key=cv2.contourArea)
-    epsilon = 0.02 * cv2.arcLength(field, True)
-    approx = cv2.approxPolyDP(field, epsilon, True)
+    hull = cv2.convexHull(field)
 
     epsilon = 0.02 * cv2.arcLength(hull, True)
     approx = cv2.approxPolyDP(hull, epsilon, True)
