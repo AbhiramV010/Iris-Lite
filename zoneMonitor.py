@@ -14,6 +14,10 @@ def defineZone(mask):
 
     cv2.imshow("NO-PROCESSED?",mask)
     
+    mask=cv2.dilate(mask,kernel,iterations=2)
+    mask=cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) # NOTE: do not make the kernel bigger, use iteration with the same kernel 
+    mask=cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours: return None
     field = max(contours, key=cv2.contourArea)

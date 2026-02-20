@@ -1,0 +1,1 @@
+# compresses video clips in a way that conforms with human percerptual sciecne
