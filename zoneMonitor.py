@@ -15,24 +15,24 @@ def getPrefConts(cnts: list): # get contours that correspond to potential grass(
             centroids.append((0, 0))
 
     bigCent = centroids[0]
-    centroids = centroids[1:]
-
+    centroids = centroids[1:6] # top 6 largest contours (excl first one)
+    
     for c in centroids:
         d = np.sqrt((bigCent[0]-c[0])**2+(bigCent[1]-c[1])**2)
         dists.append(d)
 
-    return tuple((0,dists.index(max(dists))))
+    return tuple((0,dists.index(min(dists))))
 
 def startCam():
     global cam, ret, frame, hsv, grassRange, fgbg
-    bgSep = cv2.BackgroundSubtractorKNN
+    bgSep = cv2.bgsegm.createBackgroundSubtractorCNT()
     frame = cv2.imread("C:\\Users\\abhir\\Downloads\\STEAMIC_TESTOG3.png")
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    grassRange = cv2.inRange(hsv, np.array([38, 80, 30]), np.array([80, 255, 180]))
+    grassRange = cv2.inRange(hsv, np.array([25, 40, 20]), np.array([95, 255, 255]))
 
 def defineZone(mask):
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
 
     mask=cv2.dilate(mask,kernel,iterations=2)
     mask=cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) # NOTE: do not make the kernel bigger, use iteration with the same kernel 
