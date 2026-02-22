@@ -1,31 +1,49 @@
 import cv2
 import numpy as np
 
+def getPrefConts(cnts: list): # get contours that correspond to potential grass(es)
+    centroids = []
+    cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
+    dists = []
+    for c in cnts:
+        M = cv2.moments(c)
+        if M["m00"] != 0:
+            cx = int(M["m10"] / M["m00"])
+            cy = int(M["m01"] / M["m00"])
+            centroids.append((cx, cy))
+        else:
+            centroids.append((0, 0))
+
+    bigCent = centroids[0]
+    centroids = centroids[1:]
+
+    for c in centroids:
+        d = np.sqrt((bigCent[0]-c[0])**2+(bigCent[1]-c[1])**2)
+        dists.append(d)
+
+    return tuple((0,dists.index(max(dists))))
+
 def startCam():
     global cam, ret, frame, hsv, grassRange, fgbg
-
-    frame = cv2.imread("C:\\Users\\abhir\\Downloads\\STEAMIC_TESTOG2.png")
+    bgSep = cv2.BackgroundSubtractorKNN
+    frame = cv2.imread("C:\\Users\\abhir\\Downloads\\STEAMIC_TESTOG3.png")
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     grassRange = cv2.inRange(hsv, np.array([38, 80, 30]), np.array([80, 255, 180]))
 
 def defineZone(mask):
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 
-    cv2.imshow("NO-PROCESSED?",mask)
-    
     mask=cv2.dilate(mask,kernel,iterations=2)
     mask=cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) # NOTE: do not make the kernel bigger, use iteration with the same kernel 
     mask=cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours: return None
-    field = max(contours, key=cv2.contourArea)
-    hull = cv2.convexHull(field)
-
-    epsilon = 0.02 * cv2.arcLength(hull, True)
-    approx = cv2.approxPolyDP(hull, epsilon, True)
-    return approx
+    if not contours: return []
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    contourIndex=getPrefConts(contours)
+    
+    return [contours[contourIndex[0]],contours[contourIndex[1]]]
 
 def perFrameGrass(): 
     # TODO: 
@@ -35,15 +53,14 @@ def perFrameGrass():
     pass 
 
 startCam()
-static_grass_zone = defineZone(grassRange)
-
+grass_zones = defineZone(grassRange)
 frame_display = frame.copy()
 
-if static_grass_zone is not None: 
+if grass_zones: 
     overlay = frame_display.copy()
-    cv2.drawContours(overlay, [static_grass_zone], -1, (0, 0, 120), thickness=-1)
+    cv2.drawContours(overlay, grass_zones, -1, (0, 0, 120), thickness=-1)
     cv2.addWeighted(overlay, 0.5, frame_display, 0.5, 0, frame_display)
-    cv2.drawContours(frame_display, [static_grass_zone], -1, (0,0,255), thickness=2)
+    cv2.drawContours(frame_display, grass_zones, -1, (0, 0, 255), thickness=2)
 
 cv2.imshow("steamic26-cam", frame_display)
 cv2.waitKey(0)
