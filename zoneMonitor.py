@@ -27,7 +27,7 @@ def getPrefConts(cnts: list): # get contours that correspond to potential grass(
 def startCam():
     global cam, ret, frame, hsv, grassRange, fgbg
     bgSep = cv2.bgsegm.BackgroundSubtractorCNT()
-    cam = cv2.VideoCapture(0)   # <-- swapped back to video input
+    cam = cv2.VideoCapture(0)
 
 def defineZone(mask):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
@@ -41,8 +41,9 @@ def defineZone(mask):
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
     contourIndex=getPrefConts(contours)
     
-    return [contours[contourIndex[0]],contours[contourIndex[1]]]
-
+    try: return [contours[contourIndex[0]],contours[contourIndex[1]]]
+    except: return []
+    
 def perFrameGrass(): 
     # TODO: 
     # check the presence of an moving object on the grass
@@ -52,6 +53,11 @@ def perFrameGrass():
 
 startCam()
 
+ret, frame = cam.read()
+hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+grassRange = cv2.inRange(hsv, np.array([25, 40, 20]), np.array([95, 255, 255]))
+grass_zones = defineZone(grassRange)
+
 while True:
     ret, frame = cam.read()
     if not ret:
@@ -60,7 +66,6 @@ while True:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     grassRange = cv2.inRange(hsv, np.array([25, 40, 20]), np.array([95, 255, 255]))
 
-    grass_zones = defineZone(grassRange)
     frame_display = frame.copy()
 
     if grass_zones: 
