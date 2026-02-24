@@ -26,8 +26,9 @@ def getPrefConts(cnts: list): # get contours that correspond to potential grass(
 
 def startCam():
     global cam, ret, frame, hsv, grassRange, fgbg
-    bgSep = cv2.bgsegm.BackgroundSubtractorCNT()
+    fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
     cam = cv2.VideoCapture(0)
+    for _ in range(0,120):cam.read()
 
 def defineZone(mask):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
@@ -43,20 +44,19 @@ def defineZone(mask):
     
     try: return [contours[contourIndex[0]],contours[contourIndex[1]]]
     except: return []
-    
-def perFrameGrass(): 
-    # TODO: 
-    # check the presence of an moving object on the grass
-        # bottom-most part of moving object MUST be on the grass, if not just disregard
-    # needs to be moving because people run on grass, bike bikes on grass, but a stationary tree doesn't need to be counted, ts supposed to be there
-    pass 
 
 startCam()
 
 ret, frame = cam.read()
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-grassRange = cv2.inRange(hsv, np.array([25, 40, 20]), np.array([95, 255, 255]))
+grassRange = cv2.inRange(hsv, np.array([25, 30, 20]), np.array([95, 255, 255]))
 grass_zones = defineZone(grassRange)
+
+grass_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+if grass_zones:
+    cv2.drawContours(grass_mask, grass_zones, -1, 255, thickness=-1)
+
+cv2.imshow("grassMask",grass_mask) #debug
 
 while True:
     ret, frame = cam.read()
@@ -64,19 +64,34 @@ while True:
         break
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    grassRange = cv2.inRange(hsv, np.array([25, 40, 20]), np.array([95, 255, 255]))
+    
+    fgmask=fgbg.apply(frame)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+    
+    contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contours = sorted(contours,key=cv2.contourArea,reverse=True) # biggest to smallest contours
+    contours = contours[:3]
+    
+    for idv in contours:
+        x, y, w, h = cv2.boundingRect(idv)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-    frame_display = frame.copy()
+        roi_y1 = y+h-10
+        roi_y2 = y+h
+        roi_x1 = x
+        roi_x2 = x+w
 
-    if grass_zones: 
-        overlay = frame_display.copy()
-        cv2.drawContours(overlay, grass_zones, -1, (0, 0, 120), thickness=-1)
-        cv2.addWeighted(overlay, 0.5, frame_display, 0.5, 0, frame_display)
-        cv2.drawContours(frame_display, grass_zones, -1, (0, 0, 255), thickness=2)
+        if roi_y1 >= 0 and roi_y1 < roi_y2 and roi_x1 < roi_x2:
+            objectBase = fgmask[roi_y1:roi_y2, roi_x1:roi_x2]
+            cv2.imshow("Bottom Section", objectBase)   
 
-    cv2.imshow("steamic26-cam", frame_display)
+    ## perframe ends here
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    cv2.imshow("the dot",objectBase) # debug
+    cv2.imshow("steamic26-cam", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('x'):
         break
 
 cv2.destroyAllWindows()
