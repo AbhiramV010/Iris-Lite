@@ -86,10 +86,8 @@ while True:
     
     for idv in contours:
         x, y, w, h = cv2.boundingRect(idv)
-        
         roi_y1 = max(0, y + h - 20)
         roi_y2 = y + h
-        
         actual_object_strip = fgmask[roi_y1:roi_y2, x:x+w]
         bottom_only_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
 
@@ -98,11 +96,8 @@ while True:
     ## perframe ends here
 
     _, bottom_only_mask = cv2.threshold(bottom_only_mask, 127, 255, cv2.THRESH_BINARY)
-
     finalActions(grass_mask,bottom_only_mask)
-
     cv2.imshow("steamic26-cam", frame)
-
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break
 
