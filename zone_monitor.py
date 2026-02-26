@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+from captureinfo import CaptureInfoClass # this has info for main.py
+import threading
 
 def getPrefConts(cnts: list): # get contours that correspond to potential grass(es)
     centroids = []
@@ -45,6 +47,14 @@ def defineZone(mask):
     try: return [contours[contourIndex[0]],contours[contourIndex[1]]]
     except: return []
 
+def finalActions(grass_mask, px20):
+    overlap = cv2.bitwise_and(grass_mask, px20)
+    overlap_count = cv2.countNonZero(overlap)
+    total_grass = cv2.countNonZero(grass_mask)
+
+    if overlap_count >= 50: print("Overlap detected")
+    else: return None   
+
 startCam()
 
 ret, frame = cam.read()
@@ -72,23 +82,25 @@ while True:
     contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     contours = sorted(contours,key=cv2.contourArea,reverse=True) # biggest to smallest contours
     contours = contours[:3]
+    bottom_only_mask = np.zeros_like(fgmask)
     
     for idv in contours:
         x, y, w, h = cv2.boundingRect(idv)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        
+        roi_y1 = max(0, y + h - 20)
+        roi_y2 = y + h
+        
+        actual_object_strip = fgmask[roi_y1:roi_y2, x:x+w]
+        bottom_only_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
 
-        roi_y1 = y+h-10
-        roi_y2 = y+h
-        roi_x1 = x
-        roi_x2 = x+w
-
-        if roi_y1 >= 0 and roi_y1 < roi_y2 and roi_x1 < roi_x2:
-            objectBase = fgmask[roi_y1:roi_y2, roi_x1:roi_x2]
-            cv2.imshow("Bottom Section", objectBase)   
+    cv2.imshow("Bottom", bottom_only_mask)
 
     ## perframe ends here
 
-    cv2.imshow("the dot",objectBase) # debug
+    _, bottom_only_mask = cv2.threshold(bottom_only_mask, 127, 255, cv2.THRESH_BINARY)
+
+    finalActions(grass_mask,bottom_only_mask)
+
     cv2.imshow("steamic26-cam", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('x'):
