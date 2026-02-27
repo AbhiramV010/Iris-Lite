@@ -1,7 +1,13 @@
 import cv2
 import numpy as np
-from captureinfo import CaptureInfoClass # this has info for main.py
-import threading
+from captureinfo import * # this has info for main.py
+from multiprocessing.connection import Client
+from datetime import datetime
+
+dest = ("127.0.0.1",6000)
+is_overlapping = False
+start_time = None
+end_time = None
 
 def getPrefConts(cnts: list): # get contours that correspond to potential grass(es)
     centroids = []
@@ -48,12 +54,25 @@ def defineZone(mask):
     except: return []
 
 def finalActions(grass_mask, px20):
+    global is_overlapping, start_time, end_time
     overlap = cv2.bitwise_and(grass_mask, px20)
     overlap_count = cv2.countNonZero(overlap)
-    total_grass = cv2.countNonZero(grass_mask)
+    
+    if overlap_count >= 50 and not is_overlapping:
+        is_overlapping = True
+        start_time = datetime.now().strftime("%H:%M:%S")
+        end_time = None 
+    
+    elif overlap_count < 50 and is_overlapping:
+        is_overlapping = False
+        end_time = datetime.now().strftime("%H:%M:%S")
+        res = CaptureClass(start_time, end_time, "ZONE")
+        
+        start_time = None
+        end_time = None
+        return res
 
-    if overlap_count >= 50: print("Overlap detected")
-    else: return None   
+    return None
 
 startCam()
 
@@ -91,12 +110,22 @@ while True:
         actual_object_strip = fgmask[roi_y1:roi_y2, x:x+w]
         bottom_only_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
 
-    cv2.imshow("Bottom", bottom_only_mask)
+    cv2.imshow("Bottom", bottom_only_mask) #debug
 
     ## perframe ends here
 
     _, bottom_only_mask = cv2.threshold(bottom_only_mask, 127, 255, cv2.THRESH_BINARY)
-    finalActions(grass_mask,bottom_only_mask)
+    alert = finalActions(grass_mask, bottom_only_mask)
+
+    if alert:
+        try: 
+            address = ('localhost', 8989)
+            with Client(address, authkey=b'1000011') as conn:
+                conn.send(alert)
+        except ConnectionRefusedError: 
+            raise ConnectionRefusedError("the main.py file is not running")
+        except: pass
+
     cv2.imshow("steamic26-cam", frame)
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break

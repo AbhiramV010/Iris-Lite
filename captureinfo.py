@@ -2,11 +2,10 @@
 import time
 from datetime import *
 
-class CaptureInfoClass:
-    def __init__(self,startTime,endTime,threatLevel,trigger):
+class CaptureClass:
+    def __init__(self,startTime,endTime,trigger):
         self.startTime=startTime
         self.endTime=endTime
-        self.threatLevel=threatLevel
         self.trigger=trigger
 
     def run_checks(self):
