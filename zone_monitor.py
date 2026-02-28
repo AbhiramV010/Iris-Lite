@@ -37,6 +37,7 @@ def startCam():
     fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
     cam = cv2.VideoCapture(0)
     for _ in range(0,120):cam.read()
+    print("Hey there! If you're seeing this, make sure main.py is running.")
 
 def defineZone(mask):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
