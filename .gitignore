@@ -1,2 +1,6 @@
 .vscode/
 __pycache__/
+bench.py
+sandbox.py
+sample.mp4
+bench.cpp
