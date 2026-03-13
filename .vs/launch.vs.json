@@ -1,0 +1,12 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "File_Compressor.exe (File_Compressor\\File_Compressor.exe)",
+      "name": "File_Compressor.exe (File_Compressor\\File_Compressor.exe)"
+    }
+  ]
+}
