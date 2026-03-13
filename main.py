@@ -29,16 +29,20 @@ def definePrivacy(cam): # define privacy zone
 
         if start_point and end_point:
             cv2.rectangle(img, start_point, end_point, (0, 255, 0), 2)
+            roi_defined=True
+        else: roi_defined=False
+        
         cv2.imshow('define_privacy_zone', img)
         if cv2.waitKey(1) & 0xFF == ord('m'):
             break
-
     cv2.destroyAllWindows()
     
-    try: 
-        if roi_defined: return [start_point, end_point]
-    except: 
-        return None
+    if start_point and end_point:
+        x1, y1 = start_point
+        x2, y2 = end_point
+        return [(min(x1, x2), min(y1, y2)), (max(x1, x2), max(y1, y2))]
+    
+    return None
 
 if __name__ == "__main__":
     address = ('127.0.0.1', 8989)
@@ -47,6 +51,5 @@ if __name__ == "__main__":
         while True:
             with l.accept() as conn:
                 capture = conn.recv() 
-                print(f"Time to clip: {capture.startTime} to {capture.endTime}. {capture.trigger} has triggered it!")
-            
+                print(f"Time to clip: {capture.startTime} to {capture.endTime}. {capture.trigger} has triggered it!") # replace with acc clipping logic
             cv2.waitKey(1)

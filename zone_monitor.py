@@ -2,12 +2,11 @@ import cv2
 import numpy as np
 from captureinfo import * # this has info for main.py
 from multiprocessing.connection import Client
-from datetime import datetime
+import datetime
 from collections import deque
 from main import definePrivacy
 
 overlap_history = deque(maxlen=10)
-dest = ("127.0.0.1",6000)
 is_overlapping = False
 start_time = None
 end_time = None
@@ -37,7 +36,7 @@ def getPrefConts(cnts: list): # get contours that correspond to potential grass(
 
 def startCam():
     global cam, ret, frame, hsv, grassRange, fgbg
-    fgbg = cv2.createBackgroundSubtractorKNN(history=500,dist2Threshold=800.0,detectShadows=True)   # Change to CNT if it slows down on the Pi
+    fgbg = cv2.createBackgroundSubtractorKNN(history=600,dist2Threshold=800.0,detectShadows=True)   # Change to CNT if it slows down on the Pi
     cam = cv2.VideoCapture(0)
     for _ in range(0,120):cam.read()
 
@@ -58,33 +57,36 @@ def defineZone(mask):
 
 def finalActions(grass_mask, px20):
     global is_overlapping, start_time, end_time
+    
     overlap = cv2.bitwise_and(grass_mask, px20)
-    overlap_history.append(cv2.countNonZero(overlap))
-    overlap_count = sum(overlap_history) / len(overlap_history)
+    current_count = cv2.countNonZero(overlap)
+    overlap_history.append(current_count)
     
-    if overlap_count >= 50 and not is_overlapping:
+    avg_overlap = sum(overlap_history) / len(overlap_history)
+    
+    if avg_overlap >= 50 and not is_overlapping:
         is_overlapping = True
-        start_time = datetime.now().strftime("%H:%M:%S")
-        start_time = datetime.strptime(start_time, "%H:%M:%S")
-
-        end_time = None 
+        start_time = datetime.datetime.now()
+        return None
     
-    elif overlap_count < 50 and is_overlapping:
+    elif avg_overlap < 10 and is_overlapping:
         is_overlapping = False
-        end_time = datetime.now().strftime("%H:%M:%S")
-        end_time = datetime.strptime(end_time, "%H:%M:%S")
-
-        res = CaptureClass(start_time, end_time, "Grass Detector",duration=end_time-start_time)
+        end_time = datetime.datetime.now()
+        duration = end_time - start_time
         
-        start_time = None
-        end_time = None
-        return res
-
+        buff_start = (start_time - datetime.timedelta(seconds=2)).replace(microsecond=0)
+        buff_end = (end_time + datetime.timedelta(seconds=2)).replace(microsecond=0)
+        
+        if duration > datetime.timedelta(seconds=2):
+            res = CaptureClass(buff_start, buff_end, "Grass Detector", duration=duration)
+            return res
+            
+        
     return None
 
 startCam()    
 
-print("You will be drawing a privacy zone, blocking out any property that isn't yours. Press 'M' to exit the window")
+print("**PRIVACY ZONE**\nDraw a privacy zone \nPress 'M' to save & exit \nClick anywhere to reset square")
 privacyzone=definePrivacy(cam) 
 
 ret, frame = cam.read()
@@ -97,11 +99,12 @@ if grass_zones:
     cv2.drawContours(grass_mask, grass_zones, -1, 255, thickness=-1)
 
 while True:
+    cv2.imshow("grass",grass_mask)
     ret, frame = cam.read()
     if not ret:
         break
+
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    
     fgmask=fgbg.apply(frame)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
@@ -109,36 +112,33 @@ while True:
     contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     contours = sorted(contours,key=cv2.contourArea,reverse=True) # biggest to smallest contours
     contours = contours[:3]
-    bottom_only_mask = np.zeros_like(fgmask)
+    bottom_mask = np.zeros_like(fgmask)
     
     for idv in contours:
         x, y, w, h = cv2.boundingRect(idv)
         roi_y1 = max(0, y + h - 20)
         roi_y2 = y + h
         actual_object_strip = fgmask[roi_y1:roi_y2, x:x+w]
-        bottom_only_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
+        bottom_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
 
-    
-    try: frame[privacyzone[0][1]:privacyzone[1][1], privacyzone[0][0]:privacyzone[1][0]] = 0 # black out priv zone, remove when done cause the C++ needs to do this
-    except: pass
-
-    _, bottom_only_mask = cv2.threshold(bottom_only_mask, 127, 255, cv2.THRESH_BINARY)
-    alert = finalActions(grass_mask, bottom_only_mask)
+    _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
+    cv2.imshow("mm",bottom_mask)
+    alert = finalActions(grass_mask, bottom_mask)
 
     if alert:
         try: 
             address = ('127.0.0.1', 8989)
-            if (alert.endTime - alert.startTime) > datetime.timedelta(seconds=2):
+            if (alert.duration) > datetime.timedelta(seconds=2):
                 with Client(address, authkey=b'1000011') as conn:
                     conn.send(alert)
-
         except ConnectionRefusedError: 
             raise ConnectionError("the main.py file may not be running")
-        except: raise RuntimeError("Something else went wrong")
+        
 
     cv2.imshow("steamic26-cam", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break
 
+cam.release()
 cv2.destroyAllWindows()
