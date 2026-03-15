@@ -44,6 +44,8 @@ def definePrivacy(cam): # define privacy zone
     
     return None
 
+# Scans for that one capture class and clips
+
 if __name__ == "__main__":
     address = ('127.0.0.1', 8989)
     with Listener(address, authkey=b'1000011') as l:
