@@ -36,7 +36,7 @@ def getPrefConts(cnts: list): # get contours that correspond to potential grass(
 
 def startCam():
     global cam, ret, frame, hsv, grassRange, fgbg
-    fgbg = cv2.createBackgroundSubtractorKNN(history=600,dist2Threshold=800.0,detectShadows=True)   # Change to CNT if it slows down on the Pi
+    fgbg = cv2.createBackgroundSubtractorMOG2(history=200, detectShadows=False)   # Change to CNT if it slows down on the Pi
     cam = cv2.VideoCapture(0)
     for _ in range(0,120):cam.read()
 
@@ -55,40 +55,37 @@ def defineZone(mask):
     try: return [contours[contourIndex[0]],contours[contourIndex[1]]]
     except: return []
 
-def finalActions(grass_mask, px20):
+def detectGrassOverlap(grass_mask, px20):
     global is_overlapping, start_time, end_time
     
-    overlap = cv2.bitwise_and(grass_mask, px20)
+    small_grass = cv2.resize(grass_mask, (0,0), fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST)
+    small_px20 = cv2.resize(px20, (0,0), fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST)
+
+    overlap = cv2.bitwise_and(small_grass, small_px20)
     current_count = cv2.countNonZero(overlap)
     overlap_history.append(current_count)
-    
     avg_overlap = sum(overlap_history) / len(overlap_history)
     
-    if avg_overlap >= 50 and not is_overlapping:
+    if avg_overlap >= 3 and not is_overlapping:
         is_overlapping = True
         start_time = datetime.datetime.now()
         return None
     
-    elif avg_overlap < 10 and is_overlapping:
+    elif avg_overlap < 1 and is_overlapping:
         is_overlapping = False
         end_time = datetime.datetime.now()
         duration = end_time - start_time
-        
-        buff_start = (start_time - datetime.timedelta(seconds=2)).replace(microsecond=0)
-        buff_end = (end_time + datetime.timedelta(seconds=2)).replace(microsecond=0)
-        
-        if duration > datetime.timedelta(seconds=2):
-            res = CaptureClass(buff_start, buff_end, "Grass Detector", duration=duration)
-            return res
+
+        if duration>datetime.timedelta(seconds=2):
+            buff_start = (start_time - datetime.timedelta(seconds=2)).strftime("%H:%M:%S")
+            buff_end = (end_time + datetime.timedelta(seconds=2)).strftime("%H:%M:%S")
+            return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration.total_seconds())
             
-        
     return None
 
 startCam()    
 
-print("**PRIVACY ZONE**\nDraw a privacy zone \nPress 'M' to save & exit \nClick anywhere to reset square")
 privacyzone=definePrivacy(cam) 
-
 ret, frame = cam.read()
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 grassRange = cv2.inRange(hsv, np.array([25, 30, 20]), np.array([95, 255, 255]))
@@ -105,7 +102,7 @@ while True:
         break
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    fgmask=fgbg.apply(frame)
+    fgmask = fgbg.apply(frame)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
     
@@ -123,7 +120,7 @@ while True:
 
     _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
     cv2.imshow("mm",bottom_mask)
-    alert = finalActions(grass_mask, bottom_mask)
+    alert = detectGrassOverlap(grass_mask, bottom_mask)
 
     if alert:
         try: 
@@ -134,9 +131,7 @@ while True:
         except ConnectionRefusedError: 
             raise ConnectionError("the main.py file may not be running")
         
-
     cv2.imshow("steamic26-cam", frame)
-
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break
 

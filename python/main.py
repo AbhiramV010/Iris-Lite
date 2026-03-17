@@ -18,6 +18,7 @@ def definePrivacy(cam): # define privacy zone
     global start_point, end_point, drawing, roi_defined
     start_point = end_point = None
     drawing = False
+    print("**PRIVACY ZONE**\nDraw a privacy zone \nPress 'M' to save & exit \nClick anywhere to reset square")
 
     cv2.namedWindow('define_privacy_zone')
     cv2.setMouseCallback('define_privacy_zone', drawRectangle)
