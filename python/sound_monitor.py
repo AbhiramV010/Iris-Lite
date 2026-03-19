@@ -1,4 +1,4 @@
-# import tensorflow as tf
+import tensorflow as tf
 import pyaudio
 import numpy as np
 import librosa
@@ -20,4 +20,3 @@ while True:
     mono_data = audio_data[:, 0]
     
     processedAudio = preProcessor(mono_data)
-    print(processedAudio)
