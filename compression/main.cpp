@@ -2,7 +2,6 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
-
 #include "compressor.hpp"
 #include "file_watcher.hpp"
 #include "utils.hpp"
