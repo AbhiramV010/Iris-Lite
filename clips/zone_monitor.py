@@ -77,8 +77,8 @@ def detectGrassOverlap(grass_mask, px20):
         duration = (end_time - start_time).total_seconds()
 
         if duration > 2:
-            buff_start = (start_time - datetime.timedelta(seconds=2)).strftime("%H:%M:%S")
-            buff_end = (end_time + datetime.timedelta(seconds=2)).strftime("%H:%M:%S")
+            buff_start = (start_time - datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
+            buff_end = (end_time + datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
             return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration)
             
     return None
