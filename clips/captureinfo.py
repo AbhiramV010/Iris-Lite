@@ -7,3 +7,5 @@ class CaptureClass:
     endTime: str
     trigger: str
     duration: Optional[float] = None
+    isMotionSensor: Optional[bool] = None
+    isDoorSensor: Optional[bool] = None

@@ -4,7 +4,6 @@ from captureinfo import * # this has info that will be sent to main.py
 from multiprocessing.connection import Client
 import datetime
 from collections import deque
-from main import definePrivacy
 
 # This script will process in 360p, and the rec in main.py will be in 1080p
 overlap_history = deque(maxlen=10)
@@ -79,17 +78,11 @@ def detectGrassOverlap(grass_mask, px20):
         if duration > 2:
             buff_start = (start_time - datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
             buff_end = (end_time + datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
-            return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration)
+            return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=False, isDoorSensor=False)
             
     return None
 startCam()    
 
-privacyzone=definePrivacy(cam) 
-if privacyzone: # quick convert 1080 coords from definePrivacy to 360p
-    p1, p2 = privacyzone
-    p1 = (int(p1[0] * (640/1920)), int(p1[1] * (360/1080)))
-    p2 = (int(p2[0] * (640/1920)), int(p2[1] * (360/1080)))
-    privacyzone = (p1, p2)
 ret, frame_raw = cam.read()
 frame = cv2.resize(frame_raw, (640, 360))
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -102,25 +95,11 @@ if grass_zones:
 
 while True:
     cv2.imshow("grass",grass_mask)
-    ret, frame = cam.read()
+    ret, frame_raw = cam.read()
+    
     if not ret:
         break    
     frame = cv2.resize(frame_raw, (640, 360))
-
-    if privacyzone:
-        mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-        
-        p1, p2 = privacyzone
-        rect_pts = np.array([
-            [p1[0], p1[1]], [p2[0], p1[1]], 
-            [p2[0], p2[1]], [p1[0], p2[1]]
-        ], dtype=np.int32)
-
-        cv2.drawContours(mask, [rect_pts], -1, 255, thickness=-1)
-        
-        x, y, w, h = cv2.boundingRect(mask)
-        if privacyzone:
-            cv2.rectangle(frame, privacyzone[0], privacyzone[1], (0, 0, 0), -1) 
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     fgmask = fgbg.apply(frame)
