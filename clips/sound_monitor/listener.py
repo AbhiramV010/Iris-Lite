@@ -8,12 +8,11 @@ from captureinfo import CaptureClass
 SOC = [0,1,2,3,4,5,6,7] # sounds of concern, have a look below
 # 0 -> genuine silence
 # 1 -> ambience (source: from an MPV suburban front-porch) 
-# 2 -> car crashing
-# 3 -> car screeching/skidding away
-# 4 -> screaming
-# 5 -> gunshots
-# 6 -> glass breaking 
-# 7 -> door banging/punching/aggressive-knocking/kicking 
+# 2 -> car screeching/skidding away
+# 3 -> screaming
+# 4 -> gunshots
+# 5 -> glass breaking 
+# 6 -> door banging/punching/aggressive-knocking/kicking 
 
 MODEL = "model.tflite"
 RATE = 16000 
