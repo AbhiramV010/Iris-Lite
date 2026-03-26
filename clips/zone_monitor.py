@@ -1,11 +1,11 @@
 import cv2
 import numpy as np
-from captureinfo import * # this has info for main.py
+from captureinfo import * # this has info that will be sent to main.py
 from multiprocessing.connection import Client
 import datetime
 from collections import deque
-from main import definePrivacy
 
+# This script will process in 360p, and the rec in main.py will be in 1080p
 overlap_history = deque(maxlen=10)
 is_overlapping = False
 start_time = None
@@ -35,10 +35,12 @@ def getPrefConts(cnts: list): # get contours that correspond to potential grass(
     except: return []
 
 def startCam():
-    global cam, ret, frame, hsv, grassRange, fgbg
-    fgbg = cv2.createBackgroundSubtractorMOG2(history=200, detectShadows=False)   # Change to CNT if it slows down on the Pi
+    global cam, fgbg
+    fgbg = cv2.createBackgroundSubtractorMOG2(history=200, detectShadows=False)
     cam = cv2.VideoCapture(0)
-    for _ in range(0,120):cam.read()
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    for _ in range(0, 60): cam.read()
 
 def defineZone(mask):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
@@ -58,10 +60,7 @@ def defineZone(mask):
 def detectGrassOverlap(grass_mask, px20):
     global is_overlapping, start_time, end_time
     
-    small_grass = cv2.resize(grass_mask, (0,0), fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST)
-    small_px20 = cv2.resize(px20, (0,0), fx=0.25, fy=0.25, interpolation=cv2.INTER_NEAREST)
-
-    overlap = cv2.bitwise_and(small_grass, small_px20)
+    overlap = cv2.bitwise_and(grass_mask, px20)
     current_count = cv2.countNonZero(overlap)
     overlap_history.append(current_count)
     avg_overlap = sum(overlap_history) / len(overlap_history)
@@ -74,19 +73,18 @@ def detectGrassOverlap(grass_mask, px20):
     elif avg_overlap < 1 and is_overlapping:
         is_overlapping = False
         end_time = datetime.datetime.now()
-        duration = end_time - start_time
+        duration = (end_time - start_time).total_seconds()
 
-        if duration>datetime.timedelta(seconds=2):
-            buff_start = (start_time - datetime.timedelta(seconds=2)).strftime("%H:%M:%S")
-            buff_end = (end_time + datetime.timedelta(seconds=2)).strftime("%H:%M:%S")
-            return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration.total_seconds())
+        if duration > 2:
+            buff_start = (start_time - datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
+            buff_end = (end_time + datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
+            return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=False, isDoorSensor=False)
             
     return None
-
 startCam()    
 
-privacyzone=definePrivacy(cam) 
-ret, frame = cam.read()
+ret, frame_raw = cam.read()
+frame = cv2.resize(frame_raw, (640, 360))
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 grassRange = cv2.inRange(hsv, np.array([25, 30, 20]), np.array([95, 255, 255]))
 grass_zones = defineZone(grassRange)
@@ -97,9 +95,11 @@ if grass_zones:
 
 while True:
     cv2.imshow("grass",grass_mask)
-    ret, frame = cam.read()
+    ret, frame_raw = cam.read()
+    
     if not ret:
-        break
+        break    
+    frame = cv2.resize(frame_raw, (640, 360))
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     fgmask = fgbg.apply(frame)
@@ -125,7 +125,7 @@ while True:
     if alert:
         try: 
             address = ('127.0.0.1', 8989)
-            if (alert.duration) > datetime.timedelta(seconds=2):
+            if alert.duration > 2.0:
                 with Client(address, authkey=b'1000011') as conn:
                     conn.send(alert)
         except ConnectionRefusedError: 
