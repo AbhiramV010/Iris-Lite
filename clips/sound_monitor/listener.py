@@ -5,7 +5,7 @@ import tensorflow.lite as tflite
 import librosa
 from captureinfo import CaptureClass 
 
-SOC = [0,1,2,3,4,5,6,7,8] # sounds of concern, have a look below
+SOC = [0,1,2,3,4,5,6,7] # sounds of concern, have a look below
 # 0 -> genuine silence
 # 1 -> ambience (source: from an MPV suburban front-porch) 
 # 2 -> car screeching/skidding away
@@ -14,7 +14,6 @@ SOC = [0,1,2,3,4,5,6,7,8] # sounds of concern, have a look below
 # 5 -> glass breaking 
 # 6 -> door banging/punching/aggressive-knocking/kicking 
 # 7 -> dog
-# 8 -> other rodents
 
 MODEL = "model.tflite"
 RATE = 16000 
