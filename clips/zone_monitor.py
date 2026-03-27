@@ -94,7 +94,7 @@ if grass_zones:
     cv2.drawContours(grass_mask, grass_zones, -1, 255, thickness=-1)
 
 while True:
-    cv2.imshow("grass",grass_mask)
+    # cv2.imshow("grass",grass_mask)
     ret, frame_raw = cam.read()
     
     if not ret:
@@ -119,7 +119,7 @@ while True:
         bottom_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
 
     _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
-    cv2.imshow("mm",bottom_mask)
+    # cv2.imshow("mm",bottom_mask)
     alert = detectGrassOverlap(grass_mask, bottom_mask)
 
     if alert:
@@ -131,7 +131,6 @@ while True:
         except ConnectionRefusedError: 
             raise ConnectionError("the main.py file may not be running")
         
-    cv2.imshow("steamic26-cam", frame)
     if cv2.waitKey(1) & 0xFF == ord('x'):
         break
 

@@ -70,7 +70,7 @@ if __name__ == "__main__":
                     mask_roi = motion_mask[y1:y2, x1:x2]
                     frame[y1:y2, x1:x2] = cv2.bitwise_and(roi, roi, mask=mask_roi)
 
-            cv2.imshow('Scanner_Feed', frame)
+            cv2.imshow('steam-ic-2026', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'): break
 
     except Exception as e:

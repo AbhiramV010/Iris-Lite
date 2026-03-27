@@ -13,7 +13,7 @@ def defineModel():
         
         layers.Flatten(),
         layers.Dense(64, activation='relu'),
-        layers.Dropout(0.3), # Prevents overfitting to training data
+        layers.Dropout(0.3), # Prevents overfitting 
         layers.Dense(8, activation='softmax') # 8 UNIQUE sounds, sound_0 to sound_7
     ])
     return model 
