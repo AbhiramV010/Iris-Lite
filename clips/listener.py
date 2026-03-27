@@ -1,29 +1,31 @@
 import numpy as np
 import pyaudio
 import collections
-import ai_edge_litert.interpreter as litert
+import ai_edge_litert.interpreter as litert # LiteRT replacement
 import librosa
 from multiprocessing.connection import Client
 import time
-from typing import Optional
-from datetime import datetime
-from your_shared_file import CaptureClass # Import it here if it's in a different file
+import sys
+import os
+from datetime import datetime, timedelta
+from captureinfo import CaptureClass
 
-# Mapping IDs to readable names
-SOUND_LABELS = {
-    1: "Ambience",
-    2: "Car Screech",
-    3: "Screaming",
-    4: "Gunshot",
-    5: "Glass Breaking",
-    6: "Aggressive Knocking",
-    7: "Dog Barking"
-}
 
-SOC = [1, 2, 3, 4, 5, 6, 7] 
-MODEL = "sound_model.tflite"
+SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
+
+SOC = [2, 3, 4, 5, 6, 7] # sounds of concern, have a look below
+# 0 -> genuine silence
+# 1 -> ambience (source: from an MPV suburban front-porch) 
+# 2 -> car screeching/skidding away
+# 3 -> screaming
+# 4 -> gunshots
+# 5 -> glass breaking 
+# 6 -> door banging/punching/aggressive-knocking/kicking 
+# 7 -> dog
+
+MODEL = os.path.join(os.path.dirname(__file__), "sound_model.tflite")
 RATE = 16000 
-CHUNK = 4096 
+CHUNK = 4096 # change to 1024 if poor perf, it'll eat resources tho 
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
 
@@ -50,6 +52,11 @@ def pre_process(audio_np):
         log_spec = np.pad(log_spec, ((0, 0), (0, 98 - log_spec.shape[1])), mode='constant')
     return log_spec
 
+active_detection = False
+detection_start_time = None
+current_label = None
+max_confidence = 0.0
+
 try:
     while True:
         data = stream.read(CHUNK, exception_on_overflow=False)
@@ -57,8 +64,6 @@ try:
         audio_buffer.extend(chunk)
 
         if len(audio_buffer) >= (RATE * 2):
-            start_ts = datetime.now().strftime("%H:%M:%S")
-            
             audio_array = np.array(list(audio_buffer))
             recent_audio = audio_array[-(RATE * 2):]
             
@@ -72,16 +77,27 @@ try:
             prediction = np.argmax(output_data)
             confidence = float(output_data[0][prediction])
 
+            # is the prediction in the "knowledge" and is it confident enough
             if prediction in SOC and confidence > 0.6: 
-                end_ts = datetime.now().strftime("%H:%M:%S")
-                label = SOUND_LABELS.get(prediction, f"Unknown Sound {prediction}")
+                if not active_detection:
+                    active_detection = True
+                    detection_start_time = datetime.now()
+                    current_label = SOUND_LABELS.get(prediction)
+                    max_confidence = confidence
+                else:
+                    max_confidence = max(max_confidence, confidence)
+            
+            elif active_detection:
+                detection_end_time = datetime.now()
+                buffered_start = detection_start_time - timedelta(seconds=5)
+                buffered_end = detection_end_time + timedelta(seconds=5)
+                total_duration = (buffered_end - buffered_start).total_seconds()
                 
-                # Using the class you have defined elsewhere
                 new_capture = CaptureClass(
-                    startTime=start_ts,
-                    endTime=end_ts,
-                    trigger=f"{label} ({confidence*100:.1f}%)",
-                    duration=2.0,
+                    startTime=buffered_start.strftime("%H:%M:%S"),
+                    endTime=buffered_end.strftime("%H:%M:%S"),
+                    trigger=f"{current_label} ({max_confidence*100:.1f}%)",
+                    duration=round(total_duration, 2),
                     isMotionSensor=False,
                     isDoorSensor=False
                 )
@@ -89,9 +105,12 @@ try:
                 try:
                     with Client(ADDRESS, authkey=AUTHKEY) as conn:
                         conn.send(new_capture)
-                    print(f"Sent: {new_capture.trigger}")
+                    print(f"Sent: {new_capture.trigger} | Duration: {new_capture.duration}s")
                 except:
-                    print("Connection failed. Is main.py running?")
+                    print("the main.py file may not be running")
+                
+                active_detection = False
+                max_confidence = 0.0
 
 except KeyboardInterrupt: 
     stream.stop_stream()
