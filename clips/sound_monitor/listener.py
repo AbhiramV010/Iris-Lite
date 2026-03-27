@@ -1,7 +1,7 @@
 import numpy as np
 import pyaudio
 import collections
-import tensorflow.lite as tflite
+import ai_edge_litert.interpreter as litert # LiteRT replacement
 import librosa
 from captureinfo import CaptureClass 
 
@@ -15,12 +15,12 @@ SOC = [0,1,2,3,4,5,6,7] # sounds of concern, have a look below
 # 6 -> door banging/punching/aggressive-knocking/kicking 
 # 7 -> dog
 
-MODEL = "model.tflite"
+MODEL = "sound_model.tflite"
 RATE = 16000 
 CHUNK = 4096 # change to 1024 if poor perf, it'll eat resources tho 
 THRESH = 0.03  
 
-interpreter = tflite.Interpreter(model_path=MODEL)
+interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
@@ -49,9 +49,11 @@ try:
         if rms > THRESH and len(audio_buffer) >= (RATE * 2):
             processed_data = pre_process(np.array(audio_buffer))
             input_data = processed_data[np.newaxis, ..., np.newaxis].astype(np.float32)
+            
             interpreter.set_tensor(input_details[0]['index'], input_data)
             interpreter.invoke()
             output_data = interpreter.get_tensor(output_details[0]['index'])
+            
             prediction = np.argmax(output_data)
             confidence = output_data[0][prediction]
             if prediction in SOC and confidence > 0.8: # is the prediction in the "knowledge" and is it confident enough
