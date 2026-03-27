@@ -3,7 +3,7 @@ import pyaudio
 import collections
 import ai_edge_litert.interpreter as litert # LiteRT replacement
 import librosa
-from captureinfo import CaptureClass 
+import captureinfo 
 
 SOC = [0,1,2,3,4,5,6,7] # sounds of concern, have a look below
 # 0 -> genuine silence
