@@ -10,7 +10,6 @@ import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 
-
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
 
 SOC = [2, 3, 4, 5, 6, 7] # sounds of concern, have a look below

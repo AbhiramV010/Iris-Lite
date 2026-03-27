@@ -1,99 +1,11 @@
-import numpy as np
-import pyaudio
-import collections
-import ai_edge_litert.interpreter as litert
-import librosa
-from multiprocessing.connection import Client
-import time
+from dataclasses import dataclass
 from typing import Optional
-from datetime import datetime
-from your_shared_file import CaptureClass # Import it here if it's in a different file
 
-# Mapping IDs to readable names
-SOUND_LABELS = {
-    1: "Ambience",
-    2: "Car Screech",
-    3: "Screaming",
-    4: "Gunshot",
-    5: "Glass Breaking",
-    6: "Aggressive Knocking",
-    7: "Dog Barking"
-}
-
-SOC = [1, 2, 3, 4, 5, 6, 7] 
-MODEL = "sound_model.tflite"
-RATE = 16000 
-CHUNK = 4096 
-ADDRESS = ('127.0.0.1', 8989)
-AUTHKEY = b'1000011'
-
-interpreter = litert.Interpreter(model_path=MODEL)
-interpreter.allocate_tensors()
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-p = pyaudio.PyAudio()
-stream = p.open(format=pyaudio.paFloat32, channels=1, rate=RATE,
-                input=True, frames_per_buffer=CHUNK)
-
-audio_buffer = collections.deque(maxlen=RATE * 3)
-
-def pre_process(audio_np):
-    audio_np = librosa.util.normalize(audio_np)
-    spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=128, hop_length=327)
-    log_spec = librosa.power_to_db(spec, ref=1.0)
-    log_spec = (log_spec - np.min(log_spec)) / (np.max(log_spec) - np.min(log_spec) + 1e-6)
-    
-    if log_spec.shape[1] > 98:
-        log_spec = log_spec[:, :98]
-    elif log_spec.shape[1] < 98:
-        log_spec = np.pad(log_spec, ((0, 0), (0, 98 - log_spec.shape[1])), mode='constant')
-    return log_spec
-
-try:
-    while True:
-        data = stream.read(CHUNK, exception_on_overflow=False)
-        chunk = np.frombuffer(data, dtype=np.float32)
-        audio_buffer.extend(chunk)
-
-        if len(audio_buffer) >= (RATE * 2):
-            start_ts = datetime.now().strftime("%H:%M:%S")
-            
-            audio_array = np.array(list(audio_buffer))
-            recent_audio = audio_array[-(RATE * 2):]
-            
-            processed_data = pre_process(recent_audio)
-            input_data = processed_data[np.newaxis, ..., np.newaxis].astype(np.float32)
-            
-            interpreter.set_tensor(input_details[0]['index'], input_data)
-            interpreter.invoke()
-            output_data = interpreter.get_tensor(output_details[0]['index'])
-            
-            prediction = np.argmax(output_data)
-            confidence = float(output_data[0][prediction])
-
-            if prediction in SOC and confidence > 0.6: 
-                end_ts = datetime.now().strftime("%H:%M:%S")
-                label = SOUND_LABELS.get(prediction, f"Unknown Sound {prediction}")
-                
-                # Using the class you have defined elsewhere
-                new_capture = CaptureClass(
-                    startTime=start_ts,
-                    endTime=end_ts,
-                    trigger=f"{label} ({confidence*100:.1f}%)",
-                    duration=2.0,
-                    isMotionSensor=False,
-                    isDoorSensor=False
-                )
-
-                try:
-                    with Client(ADDRESS, authkey=AUTHKEY) as conn:
-                        conn.send(new_capture)
-                    print(f"Sent: {new_capture.trigger}")
-                except:
-                    print("Connection failed. Is main.py running?")
-
-except KeyboardInterrupt: 
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
+@dataclass
+class CaptureClass:
+    startTime: str
+    endTime: str
+    trigger: str
+    duration: Optional[float] = None
+    isMotionSensor: Optional[bool] = None
+    isDoorSensor: Optional[bool] = None
