@@ -42,9 +42,6 @@ if __name__ == "__main__":
     ret, frame = cam.read()
     prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    cv2.namedWindow('Scanner_Feed')
-    cv2.setMouseCallback('Scanner_Feed', drawRectangle)
-
     address = ('127.0.0.1', 8989)
     try:
         l = Listener(address, authkey=b'1000011')
@@ -70,7 +67,7 @@ if __name__ == "__main__":
                     mask_roi = motion_mask[y1:y2, x1:x2]
                     frame[y1:y2, x1:x2] = cv2.bitwise_and(roi, roi, mask=mask_roi)
 
-            cv2.imshow('steam-ic-2026', frame)
+            # cv2.imshow('steam-ic-2026', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'): break
 
     except Exception as e:
