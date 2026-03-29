@@ -92,19 +92,11 @@ try:
                 buffered_end = detection_end_time + timedelta(seconds=5)
                 total_duration = (buffered_end - buffered_start).total_seconds()
                 
-                new_capture = CaptureClass(
-                    startTime=buffered_start.strftime("%H:%M:%S"),
-                    endTime=buffered_end.strftime("%H:%M:%S"),
-                    trigger=f"{current_label} ({max_confidence*100:.1f}%)",
-                    duration=round(total_duration, 2),
-                    isMotionSensor=False,
-                    isDoorSensor=False
-                )
+                new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"),trigger=f"{current_label} ({max_confidence*100:.1f}%)",duration=round(total_duration, 2),isMotionSensor=False,isDoorSensor=False)
 
                 try:
                     with Client(ADDRESS, authkey=AUTHKEY) as conn:
                         conn.send(new_capture)
-                    print(f"Sent: {new_capture.trigger} | Duration: {new_capture.duration}s")
                 except:
                     print("the main.py file may not be running")
                 
