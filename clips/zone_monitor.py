@@ -4,6 +4,7 @@ from captureinfo import * # this has info that will be sent to main.py
 from multiprocessing.connection import Client
 import datetime
 from collections import deque
+import RPi.GPIO as gpio
 
 # This script will process in 360p, and the rec in main.py will be in 1080p
 overlap_history = deque(maxlen=10)
@@ -78,6 +79,7 @@ def detectGrassOverlap(grass_mask, px20):
         if duration > 2:
             buff_start = (start_time - datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
             buff_end = (end_time + datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
+            x=w
             return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=False, isDoorSensor=False)
             
     return None

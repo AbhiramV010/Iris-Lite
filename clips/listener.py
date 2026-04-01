@@ -4,11 +4,10 @@ import collections
 import ai_edge_litert.interpreter as litert # LiteRT replacement
 import librosa
 from multiprocessing.connection import Client
-import time
-import sys
 import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
+import RPi.GPIO as gpio
 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
 

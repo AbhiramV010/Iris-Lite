@@ -8,10 +8,11 @@ import time
 import os
 import subprocess 
 
-SSD_PATH = "" # TODO: Shreyash needs to add the path where clips will be saved 
+SSD_PATH = "" # TODO: SOMEONE needs to add the path where clips will be saved 
 BUFFER_MINUTES = 10
 FPS = 24  # TODO: make this the actual camera fps
-FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES)
+FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES) # fps * 60 seconds per min * 10 mins, how many frames to store in RAM
+    # The deque object here is very memory UNSAFE! Be careful when editing
 
 buffer_lock = threading.Lock()
 
@@ -30,7 +31,7 @@ def drawRectangle(event, x, y, flags, param):
     elif event == cv2.EVENT_LBUTTONUP:
         drawing, end_point = False, (x, y)
 
-def save_clip_worker(frames_to_save, trigger_name):
+def save_clip_worker(frames_to_save, trigger_name,capture_class: CaptureClass): 
     with buffer_lock:    
         ts = int(time.time()) 
         tmp = f"/dev/shm/t_{ts}"  # save in RAM, because read/write operations can take massive tolls on SSDs, but nothing on RAM
@@ -39,7 +40,12 @@ def save_clip_worker(frames_to_save, trigger_name):
         for i, f in enumerate(frames_to_save): 
             with open(f"{tmp}/{i:05d}.jpg", "wb") as j: j.write(f) 
 
-        cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}.mp4" 
+        if capture_class.isMotionSensor == True:
+            cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_mthn.mp4"
+        elif capture_class.isDoorSensor == True:
+            cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_drsn.mp4"
+        else: # normal conditions
+            cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}.mp4" 
         subprocess.run(cmd.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) 
         subprocess.run(["rm", "-rf", tmp]) 
 

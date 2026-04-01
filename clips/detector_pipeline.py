@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import RPi.GPIO as gpio
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
 cap = cv2.VideoCapture(0)
