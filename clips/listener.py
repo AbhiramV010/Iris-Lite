@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 import RPi.GPIO as gpio
+from sensor_helper import *
 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
 
@@ -56,6 +57,8 @@ current_label = None
 max_confidence = 0.0
 
 try:
+    start_up(17) # door sensor
+    start_up(27) # motion sensor
     while True:
         data = stream.read(CHUNK, exception_on_overflow=False)
         chunk = np.frombuffer(data, dtype=np.float32)
@@ -91,7 +94,7 @@ try:
                 buffered_end = detection_end_time + timedelta(seconds=5)
                 total_duration = (buffered_end - buffered_start).total_seconds()
                 
-                new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"),trigger=f"{current_label} ({max_confidence*100:.1f}%)",duration=round(total_duration, 2),isMotionSensor=False,isDoorSensor=False)
+                new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"),trigger=f"{current_label} ({max_confidence*100:.1f}%)",duration=round(total_duration, 2),isMotionSensor=check_gpio(17), isDoorSensor=check_gpio(27))
 
                 try:
                     with Client(ADDRESS, authkey=AUTHKEY) as conn:
@@ -106,3 +109,6 @@ except KeyboardInterrupt:
     stream.stop_stream()
     stream.close()
     p.terminate()
+finally:
+    close_gpio(17)
+    close_gpio(27)

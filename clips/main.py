@@ -12,24 +12,11 @@ SSD_PATH = "" # TODO: SOMEONE needs to add the path where clips will be saved
 BUFFER_MINUTES = 10
 FPS = 24  # TODO: make this the actual camera fps
 FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES) # fps * 60 seconds per min * 10 mins, how many frames to store in RAM
-    # The deque object here is very memory UNSAFE! Be careful when editing
+    # The deque object here is very memory UNSAFE! Be careful when editing code
 
 buffer_lock = threading.Lock()
 
 os.makedirs(SSD_PATH, exist_ok=True)
-
-start_point = None
-end_point = None
-drawing = False
-
-def drawRectangle(event, x, y, flags, param):
-    global start_point, end_point, drawing
-    if event == cv2.EVENT_LBUTTONDOWN:
-        start_point, end_point, drawing = (x, y), (x, y), True
-    elif event == cv2.EVENT_MOUSEMOVE and drawing:
-        end_point = (x, y)
-    elif event == cv2.EVENT_LBUTTONUP:
-        drawing, end_point = False, (x, y)
 
 def save_clip_worker(frames_to_save, trigger_name,capture_class: CaptureClass): 
     with buffer_lock:    
@@ -63,19 +50,6 @@ if __name__ == "__main__":
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     
-    cv2.namedWindow('define_privacy_zone')
-    cv2.setMouseCallback('define_privacy_zone', drawRectangle)
-
-    while True:
-        ret, frame = cam.read()
-        if not ret: break
-        if start_point and end_point:
-            cv2.rectangle(frame, start_point, end_point, (0, 255, 0), 2)
-        cv2.imshow('define_privacy_zone', frame)
-        if cv2.waitKey(1) & 0xFF == ord('m'): 
-            break
-    cv2.destroyWindow('define_privacy_zone')
-
     ret, frame = cam.read()
     prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -88,20 +62,15 @@ if __name__ == "__main__":
             ret, frame = cam.read()
             if not ret: break
 
+            h, w, _ = frame.shape
+            frame[h-300:h, w-400:w] = 0
+
             # making the privacy zone
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             diff = cv2.absdiff(prev_gray, gray)
             _, motion_mask = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
             motion_mask = cv2.dilate(motion_mask, np.ones((3,3), np.uint8), iterations=1)
             prev_gray = gray
-
-            if start_point and end_point:
-                x1, y1 = min(start_point[0], end_point[0]), min(start_point[1], end_point[1])
-                x2, y2 = max(start_point[0], end_point[0]), max(start_point[1], end_point[1])
-                if x2 > x1 and y2 > y1:
-                    roi = frame[y1:y2, x1:x2]
-                    mask_roi = motion_mask[y1:y2, x1:x2]
-                    frame[y1:y2, x1:x2] = cv2.bitwise_and(roi, roi, mask=mask_roi)
 
             _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60]) 
             FRAME_BUFFER.append(encoded_frame)

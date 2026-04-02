@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 # import RPi.GPIO as gpio
 from captureinfo import CaptureClass
 from multiprocessing.connection import Client
+from sensor_helper import *
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
 cap = cv2.VideoCapture(0)
@@ -46,40 +47,46 @@ for _ in range (0,150): # read the first 150 frames (5 secs on a 30fps cam), to 
 last_centroid = None
 persistence_count = 0
 
-while True:    
-    ret, frame = cap.read()
-    if not ret or cv2.waitKey(1) & 0xFF == ord('x'): break
+try: 
+    start_up(17) # door sensor
+    start_up(27) # motion sensor
+    while True:    
+        ret, frame = cap.read()
+        if not ret or cv2.waitKey(1) & 0xFF == ord('x'): break
 
-    if tier1Actions(frame):
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        if contours:
-            main_obj = max(contours, key=cv2.contourArea)
-            x, y, w, h = cv2.boundingRect(main_obj)
-            current_centroid = (x + w//2, y + h//2)
-
-            if last_centroid:
-                dist = np.sqrt((current_centroid[0]-last_centroid[0])**2 + (current_centroid[1]-last_centroid[1])**2)
-                
-                if dist > 10: 
-                    persistence_count += 1
-                else:
-                    persistence_count = max(0, persistence_count - 1)
+        if tier1Actions(frame):
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-            last_centroid = current_centroid
+            if contours:
+                main_obj = max(contours, key=cv2.contourArea)
+                x, y, w, h = cv2.boundingRect(main_obj)
+                current_centroid = (x + w//2, y + h//2)
 
-            if persistence_count >= 20:
-                buffered_start = datetime.now() - timedelta(seconds=5)
-                buffered_end = datetime.now() + timedelta(seconds=5)
-                total_duration = (buffered_end - buffered_start).total_seconds()
+                if last_centroid:
+                    dist = np.sqrt((current_centroid[0]-last_centroid[0])**2 + (current_centroid[1]-last_centroid[1])**2)
+                    
+                    if dist > 10: 
+                        persistence_count += 1
+                    else:
+                        persistence_count = max(0, persistence_count - 1)
                 
-                new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"),trigger=f"tiered_cap",duration=round(total_duration, 2),isMotionSensor=check_gpio,isDoorSensor=check_gpio)
+                last_centroid = current_centroid
 
-                try:
-                    with Client(ADDRESS, authkey=AUTHKEY) as conn:
-                        conn.send(new_capture)
-                except:
-                    print("the main.py file may not be running")
-    else:
-        last_centroid = None
-        persistence_count = 0 
+                if persistence_count >= 20:
+                    buffered_start = datetime.now() - timedelta(seconds=5)
+                    buffered_end = datetime.now() + timedelta(seconds=5)
+                    total_duration = (buffered_end - buffered_start).total_seconds()
+                    
+                    new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"),trigger=f"tiered_cap",duration=round(total_duration, 2),isMotionSensor=check_gpio(17), isDoorSensor=check_gpio(27))
+
+                    try:
+                        with Client(ADDRESS, authkey=AUTHKEY) as conn:
+                            conn.send(new_capture)
+                    except:
+                        print("the main.py file may not be running")
+        else:
+            last_centroid = None
+            persistence_count = 0 
+finally:
+    close_gpio(17)
+    close_gpio(27)
