@@ -100,7 +100,7 @@ try:
                     with Client(ADDRESS, authkey=AUTHKEY) as conn:
                         conn.send(new_capture)
                 except:
-                    print("the main.py file may not be running")
+                    print("the main.py file is probably not running")
                 
                 active_detection = False
                 max_confidence = 0.0
