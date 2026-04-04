@@ -4,6 +4,8 @@ from captureinfo import * # this has info that will be sent to main.py
 from multiprocessing.connection import Client
 import datetime
 from collections import deque
+import RPi.GPIO as gpio
+from sensor_helper import *
 
 # This script will process in 360p, and the rec in main.py will be in 1080p
 overlap_history = deque(maxlen=10)
@@ -78,7 +80,8 @@ def detectGrassOverlap(grass_mask, px20):
         if duration > 2:
             buff_start = (start_time - datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
             buff_end = (end_time + datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
-            return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=False, isDoorSensor=False)
+            x=w
+            return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=check_gpio(17), isDoorSensor=check_gpio(27))
             
     return None
 startCam()    
@@ -93,47 +96,52 @@ grass_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 if grass_zones:
     cv2.drawContours(grass_mask, grass_zones, -1, 255, thickness=-1)
 
-while True:
-    cv2.imshow("grass",grass_mask)
-    ret, frame_raw = cam.read()
-    
-    if not ret:
-        break    
-    frame = cv2.resize(frame_raw, (640, 360))
-
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    fgmask = fgbg.apply(frame)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
-    
-    contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    contours = sorted(contours,key=cv2.contourArea,reverse=True) # biggest to smallest contours
-    contours = contours[:3]
-    bottom_mask = np.zeros_like(fgmask)
-    
-    for idv in contours:
-        x, y, w, h = cv2.boundingRect(idv)
-        roi_y1 = max(0, y + h - 20)
-        roi_y2 = y + h
-        actual_object_strip = fgmask[roi_y1:roi_y2, x:x+w]
-        bottom_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
-
-    _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
-    cv2.imshow("mm",bottom_mask)
-    alert = detectGrassOverlap(grass_mask, bottom_mask)
-
-    if alert:
-        try: 
-            address = ('127.0.0.1', 8989)
-            if alert.duration > 2.0:
-                with Client(address, authkey=b'1000011') as conn:
-                    conn.send(alert)
-        except ConnectionRefusedError: 
-            raise ConnectionError("the main.py file may not be running")
+try:
+    start_up(17) # door sensor
+    start_up(27) # motion sensor
+    while True:
+        ret, frame_raw = cam.read()
         
-    cv2.imshow("steamic26-cam", frame)
-    if cv2.waitKey(1) & 0xFF == ord('x'):
-        break
+        if not ret:
+            break    
+        frame = cv2.resize(frame_raw, (640, 360))
+
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        fgmask = fgbg.apply(frame)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+        
+        contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours = sorted(contours,key=cv2.contourArea,reverse=True) # biggest to smallest contours
+        contours = contours[:3]
+        bottom_mask = np.zeros_like(fgmask)
+        
+        for idv in contours:
+            x, y, w, h = cv2.boundingRect(idv)
+            roi_y1 = max(0, y + h - 20)
+            roi_y2 = y + h
+            actual_object_strip = fgmask[roi_y1:roi_y2, x:x+w]
+            bottom_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
+
+        _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
+        # cv2.imshow("mm",bottom_mask)
+        alert = detectGrassOverlap(grass_mask, bottom_mask)
+
+        if alert:
+            try: 
+                address = ('127.0.0.1', 8989)
+                if alert.duration > 2.0:
+                    with Client(address, authkey=b'1000011') as conn:
+                        conn.send(alert)
+            except ConnectionRefusedError: 
+                raise ConnectionError("the main.py file may not be running")
+            
+        if cv2.waitKey(1) & 0xFF == ord('x'):
+            break
+finally:
+    close_gpio(17)
+    close_gpio(27)
+
 
 cam.release()
 cv2.destroyAllWindows()

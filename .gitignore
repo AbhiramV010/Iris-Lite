@@ -6,3 +6,7 @@ sample.mp4
 bench.cpp
 test.mp3
 training_data/
+bench.sh
+CarbonAwareCharge/
+carbonAware.c
+carbonAware.h
