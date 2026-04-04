@@ -1,7 +1,7 @@
 #include "ImportanceMap.hpp"
 #include "Utils.hpp"
 #include <opencv2/imgproc.hpp>
-#include <opencv2/video.hpp>   // MOG2 lives here
+#include <opencv2/video.hpp>
 #include <algorithm>
 #include <cmath>
 #include "logging.hpp"
@@ -17,19 +17,50 @@ ImportanceMapGenerator::ImportanceMapGenerator(int width, int height,
         false  // detectShadows
     );
 
-    logInfo("ImportanceMap initialized with MOG2 background subtractor");
+    // Preallocate buffers
+    gray_.create(h, w, CV_8U);
+    motion_.create(h, w, CV_32F);
+    edges_.create(h, w, CV_32F);
+    contrast_.create(h, w, CV_32F);
+    centerBias_.create(h, w, CV_32F);
+    tempFloat_.create(h, w, CV_32F);
+
+    // Precompute center bias once
+    float cx = w * 0.5f;
+    float cy = h * 0.5f;
+
+    for (int y = 0; y < h; y++)
+    {
+        for (int x = 0; x < w; x++)
+        {
+            float dx = (x - cx) / cx;
+            float dy = (y - cy) / cy;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            centerBias_.at<float>(y, x) = std::max(0.0f, 1.0f - dist);
+        }
+    }
+    centerBias_ = normalize(centerBias_);
+
+    logInfo("ImportanceMap optimized and initialized with MOG2 background subtractor");
 }
 
 ImportanceMap ImportanceMapGenerator::compute(const cv::Mat& smallFrame,
     const ImportanceMap& faceHeatmap)
 {
-    cv::Mat gray;
-    cv::cvtColor(smallFrame, gray, cv::COLOR_BGR2GRAY);
+    // Convert to gray (reuse buffer)
+    cv::cvtColor(smallFrame, gray_, cv::COLOR_BGR2GRAY);
 
-    ImportanceMap motion = useMotion ? computeMotion(gray) : cv::Mat::zeros(h, w, CV_32F);
-    ImportanceMap edges = useEdges ? computeEdges(gray) : cv::Mat::zeros(h, w, CV_32F);
-    ImportanceMap contrast = computeContrast(gray);
-    ImportanceMap center = computeCenterBias();
+    // Motion
+    ImportanceMap motion = useMotion ? computeMotion(gray_) : cv::Mat::zeros(h, w, CV_32F);
+
+    // Edges
+    ImportanceMap edges = useEdges ? computeEdges(gray_) : cv::Mat::zeros(h, w, CV_32F);
+
+    // Contrast
+    ImportanceMap contrast = computeContrast(gray_);
+
+    // Center bias (precomputed)
+    ImportanceMap center = centerBias_;
 
     // Weighted combination
     ImportanceMap combined =
@@ -60,54 +91,37 @@ ImportanceMap ImportanceMapGenerator::computeMotion(const cv::Mat& gray)
     cv::Mat fgMask;
     bg->apply(gray, fgMask, 0.01);
 
-    cv::Mat floatMask;
-    fgMask.convertTo(floatMask, CV_32F, 1.0f / 255.0f);
-
-    return floatMask;
+    fgMask.convertTo(motion_, CV_32F, 1.0f / 255.0f);
+    return motion_;
 }
 
 ImportanceMap ImportanceMapGenerator::computeEdges(const cv::Mat& gray)
 {
-    cv::Mat sobelX, sobelY, mag;
+    cv::Mat gx, gy;
 
-    cv::Sobel(gray, sobelX, CV_32F, 1, 0, 3);
-    cv::Sobel(gray, sobelY, CV_32F, 0, 1, 3);
+    // Scharr for better edges
+    cv::Scharr(gray, gx, CV_32F, 1, 0);
+    cv::Scharr(gray, gy, CV_32F, 0, 1);
 
-    cv::magnitude(sobelX, sobelY, mag);
+    cv::magnitude(gx, gy, edges_);
 
-    return normalize(mag);
+    return normalize(edges_);
 }
 
 ImportanceMap ImportanceMapGenerator::computeContrast(const cv::Mat& gray)
 {
-    cv::Mat lap;
-    cv::Laplacian(gray, lap, CV_32F);
+    // Cheaper, smoother contrast: blur + absdiff
+    cv::GaussianBlur(gray, tempFloat_, cv::Size(3, 3), 0);
+    cv::absdiff(gray, tempFloat_, contrast_);
+    contrast_.convertTo(contrast_, CV_32F, 1.0 / 255.0);
 
-    cv::Mat absLap = cv::abs(lap);
-    return normalize(absLap);
+    return normalize(contrast_);
 }
 
 ImportanceMap ImportanceMapGenerator::computeCenterBias()
 {
-    cv::Mat bias(h, w, CV_32F);
-
-    float cx = w * 0.5f;
-    float cy = h * 0.5f;
-
-    for (int y = 0; y < h; y++)
-    {
-        for (int x = 0; x < w; x++)
-        {
-            float dx = (x - cx) / cx;
-            float dy = (y - cy) / cy;
-            float dist = std::sqrt(dx * dx + dy * dy);
-
-            // Clamp to avoid negative values
-            bias.at<float>(y, x) = std::max(0.0f, 1.0f - dist);
-        }
-    }
-
-    return normalize(bias);
+    // Just return the precomputed bias
+    return centerBias_;
 }
 
 ImportanceMap ImportanceMapGenerator::normalize(const ImportanceMap& m)

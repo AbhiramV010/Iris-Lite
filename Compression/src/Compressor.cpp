@@ -6,35 +6,10 @@
 #include "Config.hpp"
 #include "logging.hpp"
 
+static constexpr size_t MAX_QUEUE_SIZE = 30;        // protect RAM on Pi
+static constexpr float  LOW_ACTIVITY_THRESHOLD = 0.05f; // mean importance
+static constexpr int    LOW_ACTIVITY_SKIP_FACTOR = 4;   // keep 1 of 4 low-activity frames
 
-// Build FFmpeg command 
-
-static std::string buildFFmpegCommand(
-    const std::string& outputPath,
-    int width,
-    int height,
-    int crf,
-    const std::string& mode)
-{
-    std::ostringstream cmd;
-
-    cmd << "ffmpeg "
-        << "-f rawvideo "
-        << "-pix_fmt bgr24 "
-        << "-s " << width << "x" << height << " "
-        << "-r 15 "
-        << "-i - "
-        << "-c:v libx264 "
-        << "-preset slow "
-        << "-crf " << crf << " "
-        << "-pix_fmt yuv420p "
-        << "-movflags +faststart "
-        << "-y \"" << outputPath << "\"";
-
-    return cmd.str();
-}
-
-// Constructor / Destructor
 Compressor::Compressor(const Config& cfg_)
     : cfg(cfg_)
 {
@@ -69,9 +44,6 @@ Compressor::~Compressor()
     delete frameProcessor;
     delete privacyMask;
 }
-
-
-// Start compressor
 
 bool Compressor::start(const std::string& outputPath)
 {
@@ -108,9 +80,6 @@ bool Compressor::start(const std::string& outputPath)
     return true;
 }
 
- 
-// Stop compressor
- 
 void Compressor::stop()
 {
     if (!running)
@@ -138,9 +107,6 @@ void Compressor::stop()
     logInfo("Stopped compressor");
 }
 
- 
-// Frame queueing
- 
 void Compressor::pushFrame(const FrameInfo& frame)
 {
     enqueueFrame(frame.frame.clone());
@@ -149,6 +115,13 @@ void Compressor::pushFrame(const FrameInfo& frame)
 void Compressor::enqueueFrame(const cv::Mat& frame)
 {
     std::lock_guard<std::mutex> lock(queueMutex);
+
+    if (frameQueue.size() >= MAX_QUEUE_SIZE)
+    {
+        logWarn("Frame queue full, dropping frame to protect memory");
+        return;
+    }
+
     frameQueue.push(frame);
     queueCV.notify_one();
 }
@@ -169,12 +142,11 @@ cv::Mat Compressor::dequeueFrame()
     return f;
 }
 
- 
-// Processing thread
- 
 void Compressor::processingLoop()
 {
     logInfo("Processing thread started");
+
+    int lowActivityCounter = 0;
 
     while (running)
     {
@@ -182,25 +154,51 @@ void Compressor::processingLoop()
         if (raw.empty())
             continue;
 
+        // Downscale for perceptual analysis
         cv::Mat small;
         cv::resize(raw, small, cv::Size(cfg.perceptualWidth, cfg.perceptualHeight));
 
+        // Importance map (motion, edges, contrast, faces, etc.)
         ImportanceMap faceMap = faceDetector->detect(small);
         ImportanceMap imp = importanceGen->compute(small, faceMap);
 
+        // Compute mean importance as a proxy for "how much is happening"
+        cv::Scalar meanVal = cv::mean(imp);
+        float meanImportance = static_cast<float>(meanVal[0]);
+
+        bool lowActivity = (meanImportance < LOW_ACTIVITY_THRESHOLD);
+
+        if (lowActivity)
+        {
+            lowActivityCounter++;
+
+            // Skip most frames when nothing is happening
+            if (lowActivityCounter % LOW_ACTIVITY_SKIP_FACTOR != 0)
+            {
+                logDebug("Skipping low-activity frame (mean importance = " +
+                    std::to_string(meanImportance) + ")");
+                continue;
+            }
+        }
+        else
+        {
+            // Reset counter when activity resumes
+            lowActivityCounter = 0;
+        }
+
+        // Apply privacy mask on full-res frame
         privacyMask->apply(raw);
 
+        // Perceptual blending (sharp where important, smooth where not)
         cv::Mat processed = frameProcessor->process(raw, imp);
 
+        // Send to encoder queue
         enqueueFrame(processed);
     }
 
     logInfo("Processing thread exiting");
 }
 
- 
-// Encoding thread
- 
 void Compressor::encodingLoop()
 {
     logInfo("Encoding thread started");
@@ -211,7 +209,20 @@ void Compressor::encodingLoop()
         if (frame.empty())
             continue;
 
-        fwrite(frame.data, 1, frame.total() * frame.elemSize(), ffmpegPipe);
+        if (!ffmpegPipe)
+        {
+            logError("FFmpeg pipe is null during encoding");
+            break;
+        }
+
+        size_t bytes = frame.total() * frame.elemSize();
+        size_t written = fwrite(frame.data, 1, bytes, ffmpegPipe);
+
+        if (written != bytes)
+        {
+            logError("Short write to FFmpeg pipe, possible encoder failure");
+            break;
+        }
     }
 
     logInfo("Encoding thread exiting");

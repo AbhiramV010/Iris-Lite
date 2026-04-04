@@ -1,7 +1,7 @@
 #pragma once
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/video.hpp>   // <-- MOG2 lives here
+#include <opencv2/video.hpp>
 #include "Types.hpp"
 #include "FaceDetector.hpp"
 
@@ -19,9 +19,17 @@ private:
     bool useMotion;
     bool useEdges;
 
-    cv::Ptr<cv::BackgroundSubtractor> bg;   // MOG2 (correct)
+    cv::Ptr<cv::BackgroundSubtractor> bg;   // MOG2
     ImportanceMap prevImportance;           // for temporal smoothing
     bool hasPrev = false;
+
+    // Preallocated buffers
+    cv::Mat gray_;
+    cv::Mat motion_;
+    cv::Mat edges_;
+    cv::Mat contrast_;
+    cv::Mat centerBias_;
+    cv::Mat tempFloat_;
 
     // Internal helpers
     ImportanceMap computeMotion(const cv::Mat& gray);

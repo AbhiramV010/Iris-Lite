@@ -3,40 +3,64 @@
 #include <filesystem>
 #include <vector>
 #include <string>
-#include "Utils.hpp"
 #include <sstream>
 
+namespace fs = std::filesystem;
+
+// mode (from config.json) can steer encoder choice, e.g. "windows", "pi_hw", "pi_sw"
 std::string buildFFmpegCommand(const std::string& outputPath,
     int width,
     int height,
     int crf,
     const std::string& mode)
 {
-    // Simple H.264 MP4 encoder via FFmpeg stdin
     std::ostringstream cmd;
 
-#ifdef _WIN32
-    cmd << "ffmpeg -y -f rawvideo -pix_fmt bgr24 "
+#if defined(__arm__) || defined(__aarch64__)
+    // Raspberry Pi / ARM
+    if (mode == "pi_hw")
+    {
+        // Preferred: hardware encoder (ensure ffmpeg has h264_v4l2m2m)
+        cmd << "ffmpeg -y "
+            << "-f rawvideo -pix_fmt bgr24 "
+            << "-s " << width << "x" << height << " "
+            << "-r 15 "
+            << "-i - "
+            << "-c:v h264_v4l2m2m "
+            << "-b:v 800k -maxrate 1M -bufsize 2M "
+            << "-pix_fmt yuv420p "
+            << "\"" << outputPath << "\"";
+    }
+    else
+    {
+        // Safe fallback: software x264 on Pi
+        cmd << "ffmpeg -y "
+            << "-f rawvideo -pix_fmt bgr24 "
+            << "-s " << width << "x" << height << " "
+            << "-r 15 "
+            << "-i - "
+            << "-c:v libx264 "
+            << "-preset veryfast "
+            << "-crf " << crf << " "
+            << "-pix_fmt yuv420p "
+            << "\"" << outputPath << "\"";
+    }
+#else
+    // Desktop / non-ARM: software x264 with CRF
+    cmd << "ffmpeg -y "
+        << "-f rawvideo -pix_fmt bgr24 "
         << "-s " << width << "x" << height << " "
-        << "-r 30 "
+        << "-r 15 "
         << "-i - "
-        << "-c:v libx264 -preset veryfast -crf " << crf << " "
+        << "-c:v libx264 "
+        << "-preset veryfast "
+        << "-crf " << crf << " "
         << "-pix_fmt yuv420p "
         << "\"" << outputPath << "\"";
-#else
-    cmd << "ffmpeg -y -f rawvideo -pix_fmt bgr24 "
-        << "-s " << width << "x" << height << " "
-        << "-r 30 "
-        << "-i - "
-        << "-c:v libx264 -preset veryfast -crf " << crf << " "
-        << "-pix_fmt yuv420p "
-        << outputPath;
 #endif
 
     return cmd.str();
 }
-
-namespace fs = std::filesystem;
 
 bool ensureDirectory(const std::string& path)
 {

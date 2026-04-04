@@ -6,13 +6,18 @@
 #include <thread>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+
+// JSON for metadata
+#include "../external/json.hpp"
+using json = nlohmann::json;
 
 namespace fs = std::filesystem;
 
 int main()
 {
-    // *** FIXED ROOT DIRECTORY ***
-    const std::string ROOT = "C:/Users/shrey/source/repos/Compressor";
+    // Root directory: wherever the binary is run from
+    const std::string ROOT = std::filesystem::current_path().string();
 
     // Load config
     Config cfg;
@@ -34,18 +39,17 @@ int main()
     ensureDirectory(failedDir);
     ensureDirectory(logsDir);
 
-    // Start camera for detection
+    // Optional camera preview (not required for compression)
     cv::VideoCapture cam(0);
     if (!cam.isOpened())
     {
-        logError("Camera not available. Detection disabled.");
+        logWarn("Camera not available. Detection preview disabled.");
     }
     else
     {
-        logInfo("Camera detection started");
+        logInfo("Camera detection preview started");
     }
 
-    // Background thread for detection
     std::thread detectionThread([&]() {
         if (!cam.isOpened()) return;
 
@@ -85,8 +89,9 @@ int main()
         }
 
         // Build output filename
-        std::string outName =
-            outputDir + "/" + fs::path(file).stem().string() + "_compressed.mp4";
+        std::string baseName = fs::path(file).stem().string();
+        std::string outName = outputDir + "/" + baseName + "_compressed.mp4";
+        std::string metaName = outputDir + "/" + baseName + "_compressed.json";
 
         // Start compressor
         Compressor compressor(cfg);
@@ -102,6 +107,7 @@ int main()
 
         // Feed frames into compressor
         cv::Mat frame;
+        int frameCount = 0;
         while (cap.read(frame))
         {
             if (frame.empty()) continue;
@@ -109,13 +115,35 @@ int main()
             FrameInfo info;
             info.frame = frame;
             compressor.pushFrame(info);
+            frameCount++;
         }
 
-        // IMPORTANT: release the file so Windows can move it
         cap.release();
-
         compressor.stop();
-        logInfo("Finished compressing: " + file);
+        logInfo("Finished compressing: " + file + " (" + std::to_string(frameCount) + " frames)");
+
+        // Write simple metadata sidecar
+        try
+        {
+            json meta;
+            meta["input_file"] = file;
+            meta["output_file"] = outName;
+            meta["frames"] = frameCount;
+            meta["encode_width"] = cfg.encodeWidth;
+            meta["encode_height"] = cfg.encodeHeight;
+            meta["perceptual_width"] = cfg.perceptualWidth;
+            meta["perceptual_height"] = cfg.perceptualHeight;
+            meta["crf"] = cfg.crf;
+            meta["mode"] = cfg.mode;
+
+            std::ofstream metaOut(metaName);
+            metaOut << meta.dump(4);
+            logInfo("Wrote metadata: " + metaName);
+        }
+        catch (const std::exception& e)
+        {
+            logError(std::string("Failed to write metadata: ") + e.what());
+        }
 
         // Delete original file after successful compression
         std::error_code ec;
@@ -128,7 +156,6 @@ int main()
         {
             logInfo("Deleted original file: " + file);
         }
-
     }
 
     detectionThread.join();

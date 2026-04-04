@@ -1,0 +1,10 @@
+{
+  "OutputFoldersPerTargetSystem": {
+    "Local Machine": [
+      "Compression\\out\\build\\x64-Debug",
+      "Compression\\out\\install\\x64-Debug",
+      "Compression\\out\\build\\x64-Release",
+      "Compression\\out\\install\\x64-Release"
+    ]
+  }
+}

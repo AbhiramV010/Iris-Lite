@@ -7,11 +7,19 @@ class FrameProcessor
 public:
     FrameProcessor(int width, int height);
 
-    // Blend sharp + smooth using importance map (0–1)
     cv::Mat process(const cv::Mat& fullFrame, const ImportanceMap& importance);
 
 private:
     int w, h;
 
     cv::Mat createSmooth(const cv::Mat& frame);
+
+    // Preallocated buffers
+    cv::Mat smooth_;
+    cv::Mat impResized_;
+    cv::Mat imp3_;
+    cv::Mat sharpF_;
+    cv::Mat smoothF_;
+    cv::Mat outF_;
+    cv::Mat oneMinusImp_;
 };
