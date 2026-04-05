@@ -11,7 +11,7 @@ FaceDetector::FaceDetector(int width, int height, bool enabled_)
 
     // Load pretrained Haar Cascade for frontal face detection
     std::string cascadePath =
-        "C:/Users/shrey/source/repos/Compressor/data/haarcascade_frontalface_default.xml";
+        "data/haarcascade_frontalface_default.xml";
 
     if (!faceCascade.load(cascadePath))
     {
