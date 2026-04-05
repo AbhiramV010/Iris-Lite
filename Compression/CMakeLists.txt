@@ -32,7 +32,7 @@ file(GLOB SOURCES
     ${CMAKE_SOURCE_DIR}/src/*.cpp
 )
 
-add_executable(PerceptualCompressor ${SOURCES})
+add_executable(PerceptualCompressor ${SOURCES} "src/Quality.cpp")
 
 # ---------------------------------------------------------
 # Link OpenCV

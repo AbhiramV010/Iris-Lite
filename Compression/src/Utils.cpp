@@ -7,7 +7,6 @@
 
 namespace fs = std::filesystem;
 
-// mode (from config.json) can steer encoder choice, e.g. "windows", "pi_hw", "pi_sw"
 std::string buildFFmpegCommand(const std::string& outputPath,
     int width,
     int height,
@@ -17,10 +16,9 @@ std::string buildFFmpegCommand(const std::string& outputPath,
     std::ostringstream cmd;
 
 #if defined(__arm__) || defined(__aarch64__)
-    // Raspberry Pi / ARM
+    // ARM platform: attempt hardware encoding first.
     if (mode == "pi_hw")
     {
-        // Preferred: hardware encoder (ensure ffmpeg has h264_v4l2m2m)
         cmd << "ffmpeg -y "
             << "-f rawvideo -pix_fmt bgr24 "
             << "-s " << width << "x" << height << " "
@@ -33,7 +31,7 @@ std::string buildFFmpegCommand(const std::string& outputPath,
     }
     else
     {
-        // Safe fallback: software x264 on Pi
+        // ARM fallback: software H.264 encoder.
         cmd << "ffmpeg -y "
             << "-f rawvideo -pix_fmt bgr24 "
             << "-s " << width << "x" << height << " "
@@ -46,7 +44,7 @@ std::string buildFFmpegCommand(const std::string& outputPath,
             << "\"" << outputPath << "\"";
     }
 #else
-    // Desktop / non-ARM: software x264 with CRF
+    // Desktop platforms: use software encoder with quality control.
     cmd << "ffmpeg -y "
         << "-f rawvideo -pix_fmt bgr24 "
         << "-s " << width << "x" << height << " "
@@ -69,13 +67,13 @@ bool ensureDirectory(const std::string& path)
         if (!fs::exists(path))
         {
             fs::create_directories(path);
-            logInfo("Created directory: " + path);
+            logInfo("Created output directory: " + path);
         }
         return true;
     }
     catch (const std::exception& e)
     {
-        logError("Failed to create directory " + path + ": " + e.what());
+        logError("Directory creation failed for " + path + ": " + e.what());
         return false;
     }
 }
@@ -87,6 +85,7 @@ std::vector<std::string> listVideoFiles(const std::string& folder)
     if (!fs::exists(folder))
         return files;
 
+    // Enumerate video files with supported extensions.
     for (auto& p : fs::directory_iterator(folder))
     {
         if (!p.is_regular_file()) continue;
@@ -108,7 +107,7 @@ bool moveFile(const std::string& src, const std::string& dst)
     }
     catch (const std::exception& e)
     {
-        logError("Failed to move file: " + src + " → " + dst + " (" + e.what() + ")");
+        logError("File transfer failed from " + src + " to " + dst + ": " + e.what());
         return false;
     }
 }

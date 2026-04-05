@@ -8,9 +8,10 @@
 class ImportanceMapGenerator
 {
 public:
+    // Initialize with frame dimensions and feature selection flags
     ImportanceMapGenerator(int width, int height, bool useFaces, bool useMotion, bool useEdges);
 
-    // Process a downscaled frame and return importance map (float 0–1)
+    // Generate importance map (0-1 float) from downscaled frame and optional face heatmap
     ImportanceMap compute(const cv::Mat& smallFrame, const ImportanceMap& faceHeatmap);
 
 private:
@@ -19,11 +20,11 @@ private:
     bool useMotion;
     bool useEdges;
 
-    cv::Ptr<cv::BackgroundSubtractor> bg;   // MOG2
-    ImportanceMap prevImportance;           // for temporal smoothing
+    cv::Ptr<cv::BackgroundSubtractor> bg;   // MOG2 background model
+    ImportanceMap prevImportance;           // Previous frame for temporal smoothing
     bool hasPrev = false;
 
-    // Preallocated buffers
+    // Preallocated buffers (avoid per-frame allocation)
     cv::Mat gray_;
     cv::Mat motion_;
     cv::Mat edges_;
@@ -31,10 +32,10 @@ private:
     cv::Mat centerBias_;
     cv::Mat tempFloat_;
 
-    // Internal helpers
-    ImportanceMap computeMotion(const cv::Mat& gray);
-    ImportanceMap computeEdges(const cv::Mat& gray);
-    ImportanceMap computeContrast(const cv::Mat& gray);
-    ImportanceMap computeCenterBias();
-    ImportanceMap normalize(const ImportanceMap& m);
+    // Internal computation helpers
+    ImportanceMap computeMotion(const cv::Mat& gray);      // Foreground detection via MOG2
+    ImportanceMap computeEdges(const cv::Mat& gray);       // Edge strength via Scharr operator
+    ImportanceMap computeContrast(const cv::Mat& gray);    // Local texture variation
+    ImportanceMap computeCenterBias();                     // Photography principle (center importance)
+    ImportanceMap normalize(const ImportanceMap& m);       // Rescale to [0, 1] range
 };

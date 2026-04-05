@@ -6,9 +6,10 @@
 class FaceDetector
 {
 public:
+    // Initialize cascade classifier; can be disabled if not available
     FaceDetector(int width, int height, bool enabled);
 
-    // Returns a heatmap (float 0–1) same size as perceptual frame
+    // Detect faces and return heatmap (0-1) with Gaussian weighting around detected faces
     ImportanceMap detect(const cv::Mat& smallFrame);
 
 private:
@@ -16,5 +17,8 @@ private:
     bool enabled;
     cv::CascadeClassifier faceCascade;
 
-    ImportanceMap generateHeatmap(const std::vector<cv::Rect>& faces);
+    // Generate smooth Gaussian heatmap with confidence weighting around detected faces
+    ImportanceMap generateHeatmapWithConfidence(
+        const std::vector<cv::Rect>& faces,
+        const std::vector<double>& confidences);
 };
