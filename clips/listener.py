@@ -1,7 +1,7 @@
 import numpy as np
 import pyaudio
 import collections
-import ai_edge_litert.interpreter as litert # LiteRT replacement
+import ai_edge_litert.interpreter as litert
 import librosa
 from multiprocessing.connection import Client
 import os
@@ -11,22 +11,14 @@ import RPi.GPIO as gpio
 from sensor_helper import *
 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
-
-SOC = [2, 3, 4, 5, 6, 7] # sounds of concern, have a look below
-# 0 -> genuine silence
-# 1 -> ambience (source: from an MPV suburban front-porch) 
-# 2 -> car screeching/skidding away
-# 3 -> screaming
-# 4 -> gunshots
-# 5 -> glass breaking 
-# 6 -> door banging/punching/aggressive-knocking/kicking 
-# 7 -> dog
+SOC = [2, 3, 4, 5, 6, 7] 
 
 MODEL = os.path.join(os.path.dirname(__file__), "sound_model.tflite")
 RATE = 16000 
-CHUNK = 4096 # change to 1024 if poor perf, it'll eat resources tho 
+CHUNK = 4096 
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
+THRESHOLD = 0.06
 
 interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
@@ -57,53 +49,65 @@ current_label = None
 max_confidence = 0.0
 
 try:
-    start_up(17) # door sensor
-    start_up(27) # motion sensor
+    start_up(17)
+    start_up(27)
     while True:
         data = stream.read(CHUNK, exception_on_overflow=False)
         chunk = np.frombuffer(data, dtype=np.float32)
-        audio_buffer.extend(chunk)
+        
+        current_volume = np.sqrt(np.mean(chunk**2))
+        print(f"Volume: {current_volume:.5f} | Trigger: {current_volume > THRESHOLD}", end='\r')
+        
+        if current_volume > THRESHOLD:
+            audio_buffer.extend(chunk)
 
-        if len(audio_buffer) >= (RATE * 2):
-            audio_array = np.array(list(audio_buffer))
-            recent_audio = audio_array[-(RATE * 2):]
-            
-            processed_data = pre_process(recent_audio)
-            input_data = processed_data[np.newaxis, ..., np.newaxis].astype(np.float32)
-            
-            interpreter.set_tensor(input_details[0]['index'], input_data)
-            interpreter.invoke()
-            output_data = interpreter.get_tensor(output_details[0]['index'])
-            
-            prediction = np.argmax(output_data)
-            confidence = float(output_data[0][prediction])
-
-            # is the prediction in the "knowledge" and is it confident enough
-            if prediction in SOC and confidence > 0.6: 
-                if not active_detection:
-                    active_detection = True
-                    detection_start_time = datetime.now()
-                    current_label = SOUND_LABELS.get(prediction)
-                    max_confidence = confidence
-                else:
-                    max_confidence = max(max_confidence, confidence)
-            
-            elif active_detection:
-                detection_end_time = datetime.now()
-                buffered_start = detection_start_time - timedelta(seconds=5)
-                buffered_end = detection_end_time + timedelta(seconds=5)
-                total_duration = (buffered_end - buffered_start).total_seconds()
+            if len(audio_buffer) >= (RATE * 2):
+                audio_array = np.array(list(audio_buffer))
+                recent_audio = audio_array[-(RATE * 2):]
                 
-                new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"),trigger=f"{current_label} ({max_confidence*100:.1f}%)",duration=round(total_duration, 2),isMotionSensor=check_gpio(17), isDoorSensor=check_gpio(27))
-
-                try:
-                    with Client(ADDRESS, authkey=AUTHKEY) as conn:
-                        conn.send(new_capture)
-                except:
-                    print("the main.py file is probably not running")
+                processed_data = pre_process(recent_audio)
+                input_data = processed_data[np.newaxis, ..., np.newaxis].astype(np.float32)
                 
-                active_detection = False
-                max_confidence = 0.0
+                interpreter.set_tensor(input_details[0]['index'], input_data)
+                interpreter.invoke()
+                output_data = interpreter.get_tensor(output_details[0]['index'])
+                
+                prediction = np.argmax(output_data)
+                confidence = float(output_data[0][prediction])
+
+                if prediction in SOC and confidence > 0.6: 
+                    if not active_detection:
+                        active_detection = True
+                        detection_start_time = datetime.now()
+                        current_label = SOUND_LABELS.get(prediction)
+                        max_confidence = confidence
+                    else:
+                        max_confidence = max(max_confidence, confidence)
+                
+                elif active_detection:
+                    detection_end_time = datetime.now()
+                    buffered_start = detection_start_time - timedelta(seconds=5)
+                    buffered_end = detection_end_time + timedelta(seconds=5)
+                    total_duration = (buffered_end - buffered_start).total_seconds()
+                    
+                    new_capture = CaptureClass(
+                        startTime=buffered_start.strftime("%H:%M:%S"), 
+                        endTime=buffered_end.strftime("%H:%M:%S"),
+                        trigger=f"{current_label} ({max_confidence*100:.1f}%)",
+                        duration=round(total_duration, 2),
+                        isMotionSensor=check_gpio(17), 
+                        isDoorSensor=check_gpio(27)
+                    )
+                    print(f"\nCaptured: {new_capture.trigger}")
+
+                    try:
+                        with Client(ADDRESS, authkey=AUTHKEY) as conn:
+                            conn.send(new_capture)
+                    except:
+                        pass
+                    
+                    active_detection = False
+                    max_confidence = 0.0
 
 except KeyboardInterrupt: 
     stream.stop_stream()
