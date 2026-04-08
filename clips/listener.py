@@ -18,7 +18,7 @@ RATE = 16000
 CHUNK = 4096 
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
-THRESHOLD = 0.08 # a Root Mean Square value that acts as a threshold (in decibels, 0.1 RMS relative to 1.0 RMS is -22 dB SPL)
+THRESHOLD = 0.08 # a Root Mean Square value that acts as a threshold (in decibels, 0.1 RMS relative to 1.0 RMS is -22 dB SPLt)
 
 interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
