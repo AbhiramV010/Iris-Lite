@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from datetime import datetime, timedelta
-# import RPi.GPIO as gpio
+import RPi.GPIO as gpio
 from captureinfo import CaptureClass
 from multiprocessing.connection import Client
 from sensor_helper import *
