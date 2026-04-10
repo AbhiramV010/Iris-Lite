@@ -1,3 +1,4 @@
+# This is not intended for execution.
 import RPi.GPIO as gpio
 import time
 

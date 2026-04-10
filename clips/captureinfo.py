@@ -1,3 +1,4 @@
+# This is not intended for execution.
 from dataclasses import dataclass
 from typing import Optional
 

@@ -1,44 +1,47 @@
 #!/bin/bash
 
-BINARY="./compression_service"
-CPP_DIR="./compression"
-PYTHON_DIR="./clips"
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
 
-loading_bar() {
-    local label=$1
-    local chars="/-\|"
-    for i in {1..20}; do
-        echo -ne "\r$label [${chars:$((i%4)):1}] $((i*5))%"
-        sleep 0.05
+draw_progress_bar() {
+    local duration=$1
+    local width=40
+    for ((progress=0; progress<=width; progress++)); do
+        let "percent = progress * 100 / width"
+        printf "\r${CYAN}Initializing IRIS-Lite [${GREEN}"
+        for ((i=0; i<progress; i++)); do printf "━"; done
+        for ((i=progress; i<width; i++)); do printf " "; done
+        printf "${CYAN}] %d%%${NC}" $percent
+        sleep $(echo "$duration / $width" | bc -l)
     done
-    echo -e "\r$label [✔] 100%   "
+    echo -e "\n"
 }
 
-# 1. SMART COMPILATION
-if [ ! -f "$BINARY" ] || [ -n "$(find $CPP_DIR -name "*.cpp" -newer "$BINARY")" ]; then
-    echo "Compiling..."
-    g++ -O3 "$CPP_DIR/main.cpp" "$CPP_DIR/compressor.cpp" "$CPP_DIR/file_watcher.cpp" \
-        "$CPP_DIR/roi_processor.cpp" "$CPP_DIR/utils.cpp" \
-        -I./Include -o "$BINARY" -lpthread || exit 1
+if [ ! -f "./build/PerceptualCompressor" ]; then
+    echo -e "${CYAN}Binary not found. Compiling PerceptualCompressor...${NC}"
+    mkdir -p build
+    cd build || exit
+    cmake .. && make -j$(nproc)
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}Build successful.${NC}"
+        cd ..
+    else
+        echo -e "${RED}Build failed! Check your CMakeLists.txt and dependencies.${NC}"
+        exit 1
+    fi
 fi
 
-echo "*** IRIS-Lite SYSTEM BOOTING ***"
+python3 clips/listener.py > listener.log 2>&1 &
+python3 clips/detector_pipeline.py > pipeline.log 2>&1 &
+python3 clips/zone_monitor.py > zone.log 2>&1 &
+python3 clips/main.py > main_py.log 2>&1 &
 
-# Service Launches
-nice -n -15 taskset -c 0 python3 "$PYTHON_DIR/main.py" &
-loading_bar "Main Service"
+draw_progress_bar 1.5
 
-taskset -c 1 python3 "$PYTHON_DIR/listener.py" &
-loading_bar "Listener"
+echo -e "${GREEN}Clip Software Started${NC}"
+./build/PerceptualCompressor
 
-taskset -c 2 python3 "$PYTHON_DIR/detector_pipeline.py" &
-loading_bar "Detector Pipeline"
-
-taskset -c 2 python3 "$PYTHON_DIR/zone_monitor.py" &
-loading_bar "Zone Monitor"
-
-taskset -c 3 "$BINARY" &
-loading_bar "C++ Compression"
-
-echo "** IRIS Lite BOOT COMPLETE **"
-wait
+trap "kill 0" EXIT
