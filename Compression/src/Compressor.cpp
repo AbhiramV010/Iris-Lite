@@ -1,6 +1,5 @@
 #include "Compressor.hpp"
 #include "Utils.hpp"
-#include <opencv2/imgproc.hpp>
 #include <cstdio>
 #include <sstream>
 #include "Config.hpp"
