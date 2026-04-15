@@ -1,6 +1,5 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](http://creativecommons.org/licenses/by-nc-sa/4.0/)
 <!--ANYONE EDITING THE README, LISTEN UP! THE ABOVE BADGE OR ANY LICENSE TERMS MUST NOT BE REMOVED!-->
-<small>If anyone is found to break these license terms, legal action may be taken</small>
 ---
 
 # Iris_Lite Camera System
