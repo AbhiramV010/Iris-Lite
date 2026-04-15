@@ -38,17 +38,6 @@ Iris-Lite/
 
 ---
 
-## Languages
-
-| Language | Usage |
-|----------|-------|
-| C++      | 65.4% |
-| Python   | 30.3% |
-| CMake    | 2.2%  |
-| Shell    | 2.1%  |
-
----
-
 ## Getting Started
 
 1. Clone the repository:
