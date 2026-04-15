@@ -67,10 +67,11 @@ Iris-Lite/
 ## License
 
 This project is licensed under [CC BY-NC-SA 4.0](http://creativecommons.org/licenses/by-nc-sa/4.0/).
+Any updates, remixes or "project-inspired tweaks" from anyone apart from the aforementioned ***MUST*** be redistributed with an identical license. 
 
 ---
 
 ## Acknowledgements
 
-Thanks to Macmeet B for lending us a Raspberry Pi 4B, it truly allowed the project to function.
+Thanks to Macmeet B for lending us a Raspberry Pi 4B, it truly allowed the project to function.\
 Thanks to our sophomore science teacher (Mr. Hadley) for supporting us.
