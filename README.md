@@ -2,7 +2,7 @@
 
 ---
  # Iris_Lite Camera System
-Project Programming by Abhiram Vadali & Shreyash Thakur
+Project Programming by Abhiram Vadali & Shreyash Thakur\
 Lab Report by Abhiram V, Shreyash T, Subeg G, and Atharv R.
 
 
