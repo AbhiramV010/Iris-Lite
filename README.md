@@ -7,5 +7,5 @@ Lab Report by Abhiram V, Shreyash T, Subeg G, and Atharv R.
 
 
 # Acknowledgements
-Thanks to Macmeet B for sponsoring the project with hardware\
+Thanks to Macmeet B for lending us a Raspberry Pi 4B, it truly allowed the project to function\
 Thanks to our sophomore science teacher (Mr. Hadley) for supporting us
