@@ -1,34 +1,40 @@
 #include "FrameBuffer.hpp"
 #include "logging.hpp"
-
-FrameBuffer::FrameBuffer(int maxFrames_, int frameWidth, int frameHeight)
-    : maxFrames(maxFrames_), writePos(0), frameCounter(0)
-{
-    buffer.resize(maxFrames);
-    for (int i = 0; i < maxFrames; i++)
-    {
-        buffer[i].frame.create(frameHeight, frameWidth, CV_8UC3);
-        buffer[i].perceptualScore = 0.0f;
-    }
-    logInfo("FrameBuffer initialized: " + std::to_string(maxFrames) + " frames capacity");
-}
+#include <algorithm>
 
 FrameBuffer::~FrameBuffer()
 {
     clear();
+}
+FrameBuffer::FrameBuffer(int maxFrames_, int frameWidth, int frameHeight)
+    : maxFrames(maxFrames_), writePos(0), frameCounter(0)
+{
+    buffer.resize(maxFrames);
+
+    for (auto& f : buffer)
+    {
+        f.frame.create(frameHeight, frameWidth, CV_8UC3);
+        f.frame.setTo(cv::Scalar(0, 0, 0));
+        f.perceptualScore = 0.0f;
+        f.frameIndex = 0;
+    }
+
+    logInfo("FrameBuffer initialized (SAFE MODE): " + std::to_string(maxFrames));
 }
 
 void FrameBuffer::pushFrame(const cv::Mat& frame, uint64_t index)
 {
     std::lock_guard<std::mutex> lock(bufferMutex);
 
-    if (frame.empty() || frame.size() != buffer[0].frame.size())
+    if (frame.empty())
         return;
 
-    frame.copyTo(buffer[writePos].frame);
-    buffer[writePos].frameIndex = index;
-    buffer[writePos].timestamp = static_cast<double>(index) / 30.0;
-    buffer[writePos].perceptualScore = 0.0f;
+    BufferedFrame& slot = buffer[writePos];
+
+    frame.copyTo(slot.frame);
+    slot.frameIndex = frameCounter;   // ALWAYS internal monotonic index
+    slot.timestamp = frameCounter / 30.0;
+    slot.perceptualScore = 0.0f;
 
     writePos = (writePos + 1) % maxFrames;
     frameCounter++;
@@ -37,28 +43,29 @@ void FrameBuffer::pushFrame(const cv::Mat& frame, uint64_t index)
 std::vector<BufferedFrame> FrameBuffer::getFrameRange(uint64_t startIndex, uint64_t endIndex)
 {
     std::lock_guard<std::mutex> lock(bufferMutex);
-    std::vector<BufferedFrame> result;
 
-    if (startIndex > endIndex || frameCounter == 0)
-        return result;
+    std::vector<BufferedFrame> out;
+    if (frameCounter == 0 || startIndex > endIndex)
+        return out;
 
-    uint64_t oldestIndex = (frameCounter > maxFrames) ? (frameCounter - maxFrames) : 0;
-    uint64_t newestIndex = frameCounter - 1;
+    uint64_t oldest = (frameCounter > maxFrames) ? frameCounter - maxFrames : 0;
+    uint64_t newest = frameCounter - 1;
 
-    if (endIndex < oldestIndex || startIndex > newestIndex)
-        return result;
+    startIndex = std::max(startIndex, oldest);
+    endIndex = std::min(endIndex, newest);
 
-    uint64_t actualStart = (startIndex < oldestIndex) ? oldestIndex : startIndex;
-    uint64_t actualEnd = (endIndex > newestIndex) ? newestIndex : endIndex;
-
-    for (uint64_t idx = actualStart; idx <= actualEnd; idx++)
+    for (uint64_t i = startIndex; i <= endIndex; i++)
     {
-        int bufPos = idx % maxFrames;
-        if (buffer[bufPos].frameIndex == idx)
-            result.push_back(buffer[bufPos]);
+        int pos = i % maxFrames;
+
+        if (buffer[pos].frame.empty())
+            continue;
+
+        // IMPORTANT: trust position, not stored ID
+        out.push_back(buffer[pos]);
     }
 
-    return result;
+    return out;
 }
 
 BufferedFrame FrameBuffer::getLatestFrame()
@@ -68,7 +75,7 @@ BufferedFrame FrameBuffer::getLatestFrame()
     if (frameCounter == 0)
         return BufferedFrame();
 
-    int pos = (writePos - 1 + maxFrames) % maxFrames;
+    int pos = (writePos + maxFrames - 1) % maxFrames;
     return buffer[pos];
 }
 
@@ -77,15 +84,13 @@ uint64_t FrameBuffer::getCurrentIndex() const
     return frameCounter;
 }
 
-int FrameBuffer::getNumBufferedFrames() const
-{
-    return (frameCounter < maxFrames) ? frameCounter : maxFrames;
-}
-
 void FrameBuffer::clear()
 {
     std::lock_guard<std::mutex> lock(bufferMutex);
-    buffer.clear();
+
+    for (auto& f : buffer)
+        f.frame.release();
+
     writePos = 0;
     frameCounter = 0;
 }

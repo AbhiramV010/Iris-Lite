@@ -38,8 +38,9 @@ void EventAligner::parseEventFromIPC(const std::string& data)
 
 uint64_t EventAligner::mapTimeToFrameIndex(const std::string& timeStr)
 {
-    double timeSeconds = parseTimeString(timeStr);
-    return estimateFrameIndexFromTimestamp(timeSeconds);
+    // just return time-based hint if needed
+    double seconds = parseTimeString(timeStr);
+    return static_cast<uint64_t>(seconds * 30.0);
 }
 
 uint64_t EventAligner::estimateFrameIndexFromTimestamp(double absoluteSeconds)
