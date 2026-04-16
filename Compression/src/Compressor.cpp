@@ -1,244 +1,211 @@
 #include "Compressor.hpp"
-#include "Utils.hpp"
-#include <cstdio>
-#include <sstream>
-#include "Config.hpp"
 #include "logging.hpp"
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <iostream>
 
-// Tuned parameters with ablation study justification
-static constexpr size_t MAX_QUEUE_SIZE = 30;           // Protect 1GB Pi RAM
-static constexpr float  LOW_ACTIVITY_THRESHOLD = 0.05f; // 5% mean importance threshold
-static constexpr int    LOW_ACTIVITY_SKIP_FACTOR = 4;   // Keep 1 of 4 frames when inactive
-
-Compressor::Compressor(const Config& cfg_)
-    : cfg(cfg_)
+CompressionEngine::CompressionEngine(const Config& cfg_)
+    : cfg(cfg_), currentMode(CompressionMode::IDLE), avgCpuLoad(0.0f), running(false)
 {
-    // Instantiate all processing modules with config parameters
-    importanceGen = new ImportanceMapGenerator(
-        cfg.perceptualWidth,
-        cfg.perceptualHeight,
-        cfg.useFaces,
-        cfg.useMotion,
-        cfg.useEdges
-    );
-
-    faceDetector = new FaceDetector(
-        cfg.perceptualWidth,
-        cfg.perceptualHeight,
-        cfg.useFaces
-    );
-
-    frameProcessor = new FrameProcessor(
-        cfg.encodeWidth,
-        cfg.encodeHeight
-    );
-
-    privacyMask = new PrivacyMask(cfg.privacyZones);
+    frameBuffer = std::make_unique<FrameBuffer>(300, cfg.encodeWidth, cfg.encodeHeight);
+    scorer = std::make_unique<PerceptualScorer>(cfg.perceptualWidth, cfg.perceptualHeight);
+    aligner = std::make_unique<EventAligner>();
+    encoder = std::make_unique<H264Encoder>(cfg.encodeWidth, cfg.encodeHeight, 30, 1200, true);
 }
 
-Compressor::~Compressor()
+CompressionEngine::~CompressionEngine()
 {
-    stop();
-
-    delete importanceGen;
-    delete faceDetector;
-    delete frameProcessor;
-    delete privacyMask;
+    shutdown();
 }
 
-bool Compressor::start(const std::string& outputPath)
+bool CompressionEngine::initialize()
 {
-    if (running)
-        return false;
+    logInfo("CompressionEngine initializing");
 
-    running = true;
-
-    // Build platform-specific FFmpeg command
-    std::string cmd = buildFFmpegCommand(
-        outputPath,
-        cfg.encodeWidth,
-        cfg.encodeHeight,
-        cfg.crf,
-        cfg.mode
-    );
-
-    // Open FFmpeg process via pipe
-#ifdef _WIN32
-    ffmpegPipe = _popen(cmd.c_str(), "wb");
-#else
-    ffmpegPipe = popen(cmd.c_str(), "w");
-#endif
-
-    if (!ffmpegPipe)
+    if (!frameBuffer || !scorer || !aligner || !encoder)
     {
-        logError("Failed to open FFmpeg pipe");
-        running = false;
+        logError("Component initialization failed");
         return false;
     }
 
-    // Start dual-threaded processing: analysis and encoding run in parallel
-    processingThread = std::thread(&Compressor::processingLoop, this);
-    encodingThread = std::thread(&Compressor::encodingLoop, this);
+    running = true;
+    processingThread = std::thread(&CompressionEngine::processingLoop, this);
 
-    logInfo("Compressor started with dual-threaded architecture");
+    logInfo("CompressionEngine initialized and running");
     return true;
 }
 
-void Compressor::stop()
+void CompressionEngine::pushFrame(const cv::Mat& frame, uint64_t frameIndex)
 {
-    if (!running)
-        return;
+    cv::Mat preprocessed = preprocessFrame(frame);
 
-    running = false;
-    queueCV.notify_all();
+    frameBuffer->pushFrame(preprocessed, frameIndex);
 
-    // Wait for threads to complete
-    if (processingThread.joinable())
-        processingThread.join();
+    float score = scorer->scoreFrame(preprocessed, frameBuffer->getLatestFrame().frame);
 
-    if (encodingThread.joinable())
-        encodingThread.join();
-
-    // Close FFmpeg process
-    if (ffmpegPipe)
     {
-#ifdef _WIN32
-        _pclose(ffmpegPipe);
-#else
-        pclose(ffmpegPipe);
-#endif
-        ffmpegPipe = nullptr;
+        std::lock_guard<std::mutex> lock(frameMutex);
+        frameQueue.push(preprocessed);
+        if (frameQueue.size() > 10)
+            frameQueue.pop();
     }
 
-    logInfo("Compressor stopped successfully");
+    frameCV.notify_one();
+    updateMode();
 }
 
-void Compressor::pushFrame(const FrameInfo& frame)
+void CompressionEngine::receiveEvent(const DetectionEvent& event)
 {
-    enqueueFrame(frame.frame.clone());
+    std::lock_guard<std::mutex> lock(eventMutex);
+    eventQueue.push_back(event);
+    logInfo("Event queued: " + event.triggerType);
 }
 
-void Compressor::enqueueFrame(const cv::Mat& frame)
+void CompressionEngine::run()
 {
-    std::lock_guard<std::mutex> lock(queueMutex);
-
-    // Prevent unbounded queue growth (protect limited RAM on Pi)
-    if (frameQueue.size() >= MAX_QUEUE_SIZE)
-    {
-        logWarn("Frame queue at capacity (" + std::to_string(MAX_QUEUE_SIZE) +
-            "), dropping frame to maintain stability");
-        return;
-    }
-
-    frameQueue.push(frame);
-    queueCV.notify_one();  // Wake encoding thread if waiting
-}
-
-cv::Mat Compressor::dequeueFrame()
-{
-    std::unique_lock<std::mutex> lock(queueMutex);
-
-    // Block until frame available or shutdown signaled
-    queueCV.wait(lock, [&] {
-        return !running || !frameQueue.empty();
-        });
-
-    if (frameQueue.empty())
-        return cv::Mat();
-
-    cv::Mat f = frameQueue.front();
-    frameQueue.pop();
-    return f;
-}
-
-void Compressor::processingLoop()
-{
-    logInfo("Processing thread started (importance map generation and blending)");
-
-    int lowActivityCounter = 0;
-
     while (running)
     {
-        cv::Mat raw = dequeueFrame();
-        if (raw.empty())
-            continue;
+        std::unique_lock<std::mutex> lock(eventMutex);
 
-        // Downscale for perceptual analysis (36x fewer pixels = faster processing)
-        cv::Mat small;
-        cv::resize(raw, small, cv::Size(cfg.perceptualWidth, cfg.perceptualHeight));
-
-        // Compute importance map from 4 features (motion, edges, contrast, center bias)
-        ImportanceMap faceMap = faceDetector->detect(small);
-        ImportanceMap imp = importanceGen->compute(small, faceMap);
-
-        // Evaluate scene activity from mean importance
-        cv::Scalar meanVal = cv::mean(imp);
-        float meanImportance = static_cast<float>(meanVal[0]);
-
-        bool lowActivity = (meanImportance < LOW_ACTIVITY_THRESHOLD);
-
-        // Adaptive frame skipping: drop frames during low-activity scenes
-        if (lowActivity)
+        if (!eventQueue.empty())
         {
-            lowActivityCounter++;
+            DetectionEvent event = eventQueue.front();
+            eventQueue.erase(eventQueue.begin());
+            lock.unlock();
 
-            if (lowActivityCounter % LOW_ACTIVITY_SKIP_FACTOR != 0)
-            {
-                logDebug("Skipped low-activity frame (mean importance: " +
-                    std::to_string(meanImportance) + ")");
-                continue;  // Don't process this frame
-            }
+            handleEvent(event);
         }
         else
         {
-            // Reset counter when activity detected
-            lowActivityCounter = 0;
+            lock.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-
-        // Apply privacy masking (irreversible, applied before encoding)
-        privacyMask->apply(raw);
-
-        // Perceptual blending: sharp in important regions, smooth elsewhere
-        cv::Mat processed = frameProcessor->process(raw, imp);
-
-        // Enqueue processed frame for encoder
-        enqueueFrame(processed);
     }
-
-    logInfo("Processing thread exiting");
 }
 
-void Compressor::encodingLoop()
+void CompressionEngine::shutdown()
 {
-    logInfo("Encoding thread started (FFmpeg H.264 encoding)");
+    running = false;
+    frameCV.notify_all();
 
-    int frameCount = 0;
+    if (processingThread.joinable())
+        processingThread.join();
 
-    while (running || !frameQueue.empty())
+    if (encoder && encoder->isOpen())
+        encoder->close();
+
+    logInfo("CompressionEngine shutdown complete");
+}
+
+void CompressionEngine::processingLoop()
+{
+    logInfo("Processing loop started");
+
+    while (running)
     {
-        cv::Mat frame = dequeueFrame();
-        if (frame.empty())
-            continue;
+        std::unique_lock<std::mutex> lock(frameMutex);
+        frameCV.wait_for(lock, std::chrono::milliseconds(500));
 
-        if (!ffmpegPipe)
+        if (!frameQueue.empty())
         {
-            logError("FFmpeg pipe null, encoding aborted");
-            break;
+            cv::Mat frame = frameQueue.front();
+            frameQueue.pop();
+            lock.unlock();
         }
-
-        // Write raw pixel data to FFmpeg stdin
-        size_t bytes = frame.total() * frame.elemSize();
-        size_t written = fwrite(frame.data, 1, bytes, ffmpegPipe);
-
-        if (written != bytes)
-        {
-            logError("Incomplete write to FFmpeg (" + std::to_string(written) +
-                "/" + std::to_string(bytes) + " bytes)");
-            break;
-        }
-
-        frameCount++;
     }
 
-    logInfo("Encoding thread exiting (encoded " + std::to_string(frameCount) + " frames)");
+    logInfo("Processing loop exited");
+}
+
+void CompressionEngine::handleEvent(const DetectionEvent& event)
+{
+    uint64_t startIdx = aligner->mapTimeToFrameIndex(event.startTimeStr);
+    uint64_t endIdx = aligner->mapTimeToFrameIndex(event.endTimeStr);
+
+    auto frames = frameBuffer->getFrameRange(startIdx, endIdx);
+
+    if (frames.empty())
+    {
+        logWarn("No frames found for event: " + event.triggerType);
+        return;
+    }
+
+    writeClip(frames, event);
+}
+
+void CompressionEngine::writeClip(const std::vector<BufferedFrame>& frames, const DetectionEvent& event)
+{
+    if (frames.empty())
+        return;
+
+    std::string outputFile = "output_" + event.triggerType + ".mp4";
+
+    if (!encoder->open(outputFile))
+    {
+        logError("Failed to open encoder for clip");
+        return;
+    }
+
+    for (const auto& bf : frames)
+    {
+        if (!encoder->writeFrame(bf.frame))
+        {
+            logError("Failed to write frame to encoder");
+            break;
+        }
+    }
+
+    encoder->close();
+
+    logInfo("Clip written: " + outputFile + " (" + std::to_string(frames.size()) + " frames)");
+
+    try
+    {
+        std::string metaFile = outputFile + ".json";
+        std::ofstream meta(metaFile);
+        meta << "{\n";
+        meta << "  \"trigger\": \"" << event.triggerType << "\",\n";
+        meta << "  \"startTime\": \"" << event.startTimeStr << "\",\n";
+        meta << "  \"endTime\": \"" << event.endTimeStr << "\",\n";
+        meta << "  \"duration\": " << event.duration << ",\n";
+        meta << "  \"frames\": " << frames.size() << ",\n";
+        meta << "  \"isMotionSensor\": " << (event.isMotionSensor ? "true" : "false") << ",\n";
+        meta << "  \"isDoorSensor\": " << (event.isDoorSensor ? "true" : "false") << "\n";
+        meta << "}\n";
+        meta.close();
+
+        logInfo("Metadata written: " + metaFile);
+    }
+    catch (const std::exception& e)
+    {
+        logError("Failed to write metadata: " + std::string(e.what()));
+    }
+}
+
+void CompressionEngine::updateMode()
+{
+    float motionScore = scorer->getMotionScore();
+
+    if (motionScore > 0.7f)
+        currentMode = CompressionMode::PEAK_PROTECTION;
+    else if (motionScore > 0.4f)
+        currentMode = CompressionMode::ACTIVE;
+    else
+        currentMode = CompressionMode::IDLE;
+}
+
+cv::Mat CompressionEngine::preprocessFrame(const cv::Mat& frame)
+{
+    if (frame.empty())
+        return frame;
+
+    cv::Mat processed = frame.clone();
+
+    for (const auto& zone : cfg.privacyZones)
+    {
+        cv::rectangle(processed, zone, cv::Scalar(0, 0, 0), cv::FILLED);
+    }
+
+    return processed;
 }

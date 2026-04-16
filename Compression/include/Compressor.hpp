@@ -1,53 +1,70 @@
 #pragma once
+
+#include <opencv2/core.hpp>
 #include <thread>
 #include <atomic>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
-#include <opencv2/core.hpp>
-#include "Config.hpp"
-#include "Types.hpp"
-#include "ImportanceMap.hpp"
-#include "FaceDetector.hpp"
-#include "FrameProcessor.hpp"
-#include "PrivacyMask.hpp"
-#include "Quality.hpp"
+#include <memory>
 
-class Compressor
+#include "FrameBuffer.hpp"
+#include "PerceptualScorer.hpp"
+#include "EventAligner.hpp"
+#include "H264Encoder.hpp"
+#include "Config.hpp"
+
+enum class CompressionMode
+{
+    IDLE,
+    ACTIVE,
+    PEAK_PROTECTION
+};
+
+class CompressionEngine
 {
 public:
-    Compressor(const Config& cfg);
-    ~Compressor();
+    CompressionEngine(const Config& cfg);
+    ~CompressionEngine();
 
-    // Initialize FFmpeg pipe and start processing threads
-    bool start(const std::string& outputPath);
+    bool initialize();
 
-    // Queue frame for processing and encoding
-    void pushFrame(const FrameInfo& frame);
+    void pushFrame(const cv::Mat& frame, uint64_t frameIndex);
 
-    // Stop all threads and close FFmpeg pipe
-    void stop();
+    void receiveEvent(const DetectionEvent& event);
+
+    void run();
+
+    void shutdown();
+
+    CompressionMode getMode() const { return currentMode; }
+
+    float getAverageCpuLoad() const { return avgCpuLoad; }
 
 private:
-    std::thread processingThread;
-    std::thread encodingThread;
-    std::atomic<bool> running{ false };
+    Config cfg;
+    std::unique_ptr<FrameBuffer> frameBuffer;
+    std::unique_ptr<PerceptualScorer> scorer;
+    std::unique_ptr<EventAligner> aligner;
+    std::unique_ptr<H264Encoder> encoder;
+
+    CompressionMode currentMode;
+    float avgCpuLoad;
 
     std::queue<cv::Mat> frameQueue;
-    std::mutex queueMutex;
-    std::condition_variable queueCV;
+    std::mutex frameMutex;
+    std::condition_variable frameCV;
 
-    FILE* ffmpegPipe = nullptr;
+    std::vector<DetectionEvent> eventQueue;
+    std::mutex eventMutex;
 
-    ImportanceMapGenerator* importanceGen = nullptr;
-    FaceDetector* faceDetector = nullptr;
-    FrameProcessor* frameProcessor = nullptr;
-    PrivacyMask* privacyMask = nullptr;
-
-    Config cfg;
+    std::thread processingThread;
+    std::atomic<bool> running;
 
     void processingLoop();
-    void encodingLoop();
-    void enqueueFrame(const cv::Mat& frame);
-    cv::Mat dequeueFrame();
+    void handleEvent(const DetectionEvent& event);
+    void writeClip(const std::vector<BufferedFrame>& frames, const DetectionEvent& event);
+    void updateMode();
+
+    cv::Mat preprocessFrame(const cv::Mat& frame);
 };

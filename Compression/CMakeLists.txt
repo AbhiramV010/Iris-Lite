@@ -4,42 +4,31 @@ project(PerceptualCompressor LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ---------------------------------------------------------
-# OpenCV
-# ---------------------------------------------------------
-# This MUST point to the folder containing OpenCVConfig.cmake
-set(OpenCV_DIR "C:/dev/opencv-install")
-
-# Ensure both Debug and Release configs exist
-set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
-
+set(OpenCV_DIR "C:/dev/opencv/build/x64/vc16/lib")
 find_package(OpenCV REQUIRED)
 
-include_directories(${OpenCV_INCLUDE_DIRS})
+add_executable(PerceptualCompressor
+    src/main.cpp
+    src/Compressor.cpp
+    src/FrameBuffer.cpp
+    src/FrameProcessor.cpp
+    src/EventAligner.cpp
+    src/PerceptualScorer.cpp
+    src/PrivacyMask.cpp
+    src/Utils.cpp
+    src/logging.cpp
+    src/Config.cpp
+    src/H264encoder.cpp
+)
 
-# ---------------------------------------------------------
-# Project include directories
-# ---------------------------------------------------------
-include_directories(
+target_include_directories(PerceptualCompressor PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/external
 )
 
-# ---------------------------------------------------------
-# Source files
-# ---------------------------------------------------------
-file(GLOB SOURCES
-    ${CMAKE_SOURCE_DIR}/src/*.cpp
-)
-
-add_executable(PerceptualCompressor ${SOURCES} "src/Quality.cpp")
-
-# ---------------------------------------------------------
-# Link OpenCV
-# ---------------------------------------------------------
 target_link_libraries(PerceptualCompressor PRIVATE
     ${OpenCV_LIBS}
 )
 
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-message(STATUS "OpenCV libs: ${OpenCV_LIBS}")
+message(STATUS "Build system: ${CMAKE_SYSTEM_NAME}")
