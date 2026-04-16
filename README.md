@@ -11,13 +11,13 @@ Lab Report by Abhiram V, Shreyash T, Subeg G, and Atharv R.
 
 ---
 
-## About
+## 🤔 About
 
 Iris_Lite is a lightweight camera system built on the Raspberry Pi 4B. It features a custom compression pipeline designed to efficiently capture and store video clips with minimal resource usage.
 
 ---
 
-## Features
+## 💡 Features
 
 - Camera capture on Raspberry Pi 4B
 - Custom compression algorithm (C++)
@@ -26,7 +26,7 @@ Iris_Lite is a lightweight camera system built on the Raspberry Pi 4B. It featur
 
 ---
 
-## Project Structure
+## 🛠️ Project Structure
 
 ```
 Iris-Lite/
@@ -38,7 +38,7 @@ Iris-Lite/
 
 ---
 
-## Getting Started
+## ▶️ Getting Started
 
 1. Clone the repository:
    ```bash
@@ -53,14 +53,14 @@ Iris-Lite/
 
 ---
 
-## License
+## ⚖️ License
 
 This project is licensed under [CC BY-NC-SA 4.0](http://creativecommons.org/licenses/by-nc-sa/4.0/).
 Any updates, remixes or "project-inspired tweaks" from anyone apart from the aforementioned ***MUST*** be redistributed with an identical license. 
 
 ---
 
-## Acknowledgements
+## ❤️‍🩹 Acknowledgements
 
 Thanks to Macmeet B for lending us a Raspberry Pi 4B, it truly allowed the project to function.\
 Thanks to our sophomore science teacher (Mr. Hadley) for supporting us.
