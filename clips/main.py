@@ -18,7 +18,7 @@ buffer_lock = threading.Lock()
 
 os.makedirs(SSD_PATH, exist_ok=True)
 
-def save_clip_worker(frames_to_save, trigger_name, capture_class: CaptureClass): 
+def save_clip_worker(frames_to_save, trigger_name,capture_class: CaptureClass): 
     with buffer_lock:    
         ts = int(time.time()) 
         tmp = f"/dev/shm/t_{ts}"  # save in RAM, because read/write operations can take massive tolls on SSDs, but nothing on RAM
@@ -43,30 +43,30 @@ def clipRecorder(l):
             if capture:
                 with buffer_lock:
                     buffer_snapshot = list(FRAME_BUFFER)
-                threading.Thread(target=save_clip_worker, args=(buffer_snapshot, capture.trigger), daemon=True).start()
+                threading.Thread(target=save_clip_worker, args=(buffer_snapshot, capture.trigger),daemon=True).start()
 
 if __name__ == "__main__":
     cam = cv2.VideoCapture(0)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+
     ret, frame = cam.read()
-    if ret:
-        frame = cv2.resize(frame, (1280, 720))
-        prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+
 
     address = ('127.0.0.1', 8989)
     try:
         l = Listener(address, authkey=b'1000011')
         threading.Thread(target=clipRecorder, args=(l,), daemon=True).start()
-        
+
         while True:
             ret, frame = cam.read()
             if not ret: break
 
-            frame = cv2.resize(frame, (1280, 720))
+
             h, w, _ = frame.shape
-            frame[h-200:h, w-300:w] = 0
+            frame[h-300:h, w-400:w] = 0
 
             # making the privacy zone
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -83,4 +83,3 @@ if __name__ == "__main__":
 
     finally:
         cam.release()
-        cv2.destroyAllWindows()
