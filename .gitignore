@@ -1,12 +1,7 @@
 .vscode/
 __pycache__/
-bench.py
-sandbox.py
-sample.mp4
-bench.cpp
-test.mp3
+sandbox.*
+sample.*
+bench.*
+test.*
 training_data/
-bench.sh
-CarbonAwareCharge/
-carbonAware.c
-carbonAware.h

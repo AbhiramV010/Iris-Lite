@@ -4,10 +4,7 @@ from captureinfo import * # this has info that will be sent to main.py
 from multiprocessing.connection import Client
 import datetime
 from collections import deque
-# try: import RPi.GPIO as gpio
-# except ModuleNotFoundError: pass
-# except Exception as e: print("Something happened while trying to import RPi.GPIO")
-# from sensor_helper import *
+from sensor_helper import *
 
 overlap_history = deque(maxlen=10)
 is_overlapping = False

@@ -7,9 +7,6 @@ from multiprocessing.connection import Client
 import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
-try: import RPi.GPIO as gpio
-except ModuleNotFoundError: pass
-except Exception as e: print("Something happened while trying to import RPi.GPIO")
 from sensor_helper import *
 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
