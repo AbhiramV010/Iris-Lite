@@ -4,7 +4,9 @@ from captureinfo import * # this has info that will be sent to main.py
 from multiprocessing.connection import Client
 import datetime
 from collections import deque
-import RPi.GPIO as gpio
+try: import RPi.GPIO as gpio
+except ModuleNotFoundError: pass
+except Exception as e: print("Something happened while trying to import RPi.GPIO")
 from sensor_helper import *
 
 # This script will process in 360p, and the rec in main.py will be in 1080p
@@ -97,8 +99,10 @@ if grass_zones:
     cv2.drawContours(grass_mask, grass_zones, -1, 255, thickness=-1)
 
 try:
-    start_up(17) # door sensor
-    start_up(27) # motion sensor
+    try: 
+        start_up(17) # door sensor
+        start_up(27) # motion sensor
+    except: pass
     while True:
         ret, frame_raw = cam.read()
         
@@ -139,9 +143,10 @@ try:
         if cv2.waitKey(1) & 0xFF == ord('x'):
             break
 finally:
-    close_gpio(17)
-    close_gpio(27)
-
+    try:
+        close_gpio(17)
+        close_gpio(27)
+    except: pass
 
 cam.release()
 cv2.destroyAllWindows()

@@ -7,7 +7,9 @@ from multiprocessing.connection import Client
 import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
-import RPi.GPIO as gpio
+try: import RPi.GPIO as gpio
+except ModuleNotFoundError: pass
+except Exception as e: print("Something happened while trying to import RPi.GPIO")
 from sensor_helper import *
 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
@@ -49,8 +51,10 @@ current_label = None
 max_confidence = 0.0
 
 try:
-    start_up(17)
-    start_up(27)
+    try: 
+        start_up(17)
+        start_up(27)
+    except: pass
     while True:
         data = stream.read(CHUNK, exception_on_overflow=False)
         chunk = np.frombuffer(data, dtype=np.float32)
@@ -114,5 +118,7 @@ except KeyboardInterrupt:
     stream.close()
     p.terminate()
 finally:
-    close_gpio(17)
-    close_gpio(27)
+    try:
+        close_gpio(17)
+        close_gpio(27)
+    except: pass
