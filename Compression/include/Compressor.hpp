@@ -14,6 +14,7 @@
 #include "H264Encoder.hpp"
 #include "Config.hpp"
 
+
 enum class CompressionMode
 {
     IDLE,
@@ -23,6 +24,8 @@ enum class CompressionMode
 
 class CompressionEngine
 {
+private:
+    cv::Mat lastFrameForScoring;
 public:
     CompressionEngine(const Config& cfg);
     ~CompressionEngine();
@@ -64,7 +67,7 @@ private:
     void processingLoop();
     void handleEvent(const DetectionEvent& event);
     void writeClip(const std::vector<BufferedFrame>& frames, const DetectionEvent& event);
-    void updateMode();
+    void updateMode(float motionScore);
 
     cv::Mat preprocessFrame(const cv::Mat& frame);
 };

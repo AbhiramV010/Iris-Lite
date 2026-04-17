@@ -18,8 +18,9 @@ public:
 
 private:
     int w, h;
+
     cv::Mat prevGray;
-    cv::Mat workGray;
+
     float lastMotionScore;
     float lastEdgeScore;
     float lastStabilityScore;

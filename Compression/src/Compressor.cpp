@@ -1,12 +1,16 @@
 #include "Compressor.hpp"
 #include "logging.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
 
 CompressionEngine::CompressionEngine(const Config& cfg_)
-    : cfg(cfg_), currentMode(CompressionMode::IDLE), avgCpuLoad(0.0f), running(false)
+    : cfg(cfg_),
+    currentMode(CompressionMode::IDLE),
+    avgCpuLoad(0.0f),
+    running(false)
 {
     frameBuffer = std::make_unique<FrameBuffer>(300, cfg.encodeWidth, cfg.encodeHeight);
     scorer = std::make_unique<PerceptualScorer>(cfg.perceptualWidth, cfg.perceptualHeight);
@@ -19,6 +23,9 @@ CompressionEngine::~CompressionEngine()
     shutdown();
 }
 
+// -----------------------------
+// INIT
+// -----------------------------
 bool CompressionEngine::initialize()
 {
     logInfo("CompressionEngine initializing");
@@ -36,32 +43,59 @@ bool CompressionEngine::initialize()
     return true;
 }
 
+// -----------------------------
+// FRAME INPUT PIPELINE
+// -----------------------------
 void CompressionEngine::pushFrame(const cv::Mat& frame, uint64_t frameIndex)
 {
+    if (frame.empty())
+        return;
+
     cv::Mat preprocessed = preprocessFrame(frame);
 
+    // store into circular buffer
     frameBuffer->pushFrame(preprocessed, frameIndex);
 
-    float score = scorer->scoreFrame(preprocessed, frameBuffer->getLatestFrame().frame);
+    // -----------------------------
+    // SAFE MOTION SCORING
+    // -----------------------------
+    float score = 0.0f;
 
+    if (!lastFrameForScoring.empty())
+    {
+        score = scorer->scoreFrame(preprocessed, lastFrameForScoring);
+    }
+    else
+    {
+        score = scorer->scoreFrame(preprocessed, preprocessed);
+    }
+
+    // update previous frame
+    lastFrameForScoring = preprocessed.clone();
+
+    // -----------------------------
+    // MODE UPDATE (use LOCAL SCORE ONLY)
+    // -----------------------------
+    updateMode(score);
+
+    // -----------------------------
+    // QUEUE FOR PROCESSING THREAD
+    // -----------------------------
     {
         std::lock_guard<std::mutex> lock(frameMutex);
+
         frameQueue.push(preprocessed);
+
         if (frameQueue.size() > 10)
             frameQueue.pop();
     }
 
     frameCV.notify_one();
-    updateMode();
 }
 
-void CompressionEngine::receiveEvent(const DetectionEvent& event)
-{
-    std::lock_guard<std::mutex> lock(eventMutex);
-    eventQueue.push_back(event);
-    logInfo("Event queued: " + event.triggerType);
-}
-
+// -----------------------------
+// EVENT LOOP (unchanged logic, cleaned style)
+// -----------------------------
 void CompressionEngine::run()
 {
     while (running)
@@ -72,8 +106,8 @@ void CompressionEngine::run()
         {
             DetectionEvent event = eventQueue.front();
             eventQueue.erase(eventQueue.begin());
-            lock.unlock();
 
+            lock.unlock();
             handleEvent(event);
         }
         else
@@ -84,6 +118,9 @@ void CompressionEngine::run()
     }
 }
 
+// -----------------------------
+// SHUTDOWN
+// -----------------------------
 void CompressionEngine::shutdown()
 {
     running = false;
@@ -98,6 +135,10 @@ void CompressionEngine::shutdown()
     logInfo("CompressionEngine shutdown complete");
 }
 
+// -----------------------------
+// PROCESSING LOOP
+// (currently passive queue drain)
+// -----------------------------
 void CompressionEngine::processingLoop()
 {
     logInfo("Processing loop started");
@@ -112,12 +153,18 @@ void CompressionEngine::processingLoop()
             cv::Mat frame = frameQueue.front();
             frameQueue.pop();
             lock.unlock();
+
+            // FUTURE: plug FrameProcessor + encoder here
+            (void)frame;
         }
     }
 
     logInfo("Processing loop exited");
 }
 
+// -----------------------------
+// EVENT HANDLING
+// -----------------------------
 void CompressionEngine::handleEvent(const DetectionEvent& event)
 {
     uint64_t startIdx = aligner->mapTimeToFrameIndex(event.startTimeStr);
@@ -134,7 +181,12 @@ void CompressionEngine::handleEvent(const DetectionEvent& event)
     writeClip(frames, event);
 }
 
-void CompressionEngine::writeClip(const std::vector<BufferedFrame>& frames, const DetectionEvent& event)
+// -----------------------------
+// CLIP WRITER
+// -----------------------------
+void CompressionEngine::writeClip(
+    const std::vector<BufferedFrame>& frames,
+    const DetectionEvent& event)
 {
     if (frames.empty())
         return;
@@ -158,12 +210,14 @@ void CompressionEngine::writeClip(const std::vector<BufferedFrame>& frames, cons
 
     encoder->close();
 
-    logInfo("Clip written: " + outputFile + " (" + std::to_string(frames.size()) + " frames)");
+    logInfo("Clip written: " + outputFile +
+        " (" + std::to_string(frames.size()) + " frames)");
 
     try
     {
         std::string metaFile = outputFile + ".json";
         std::ofstream meta(metaFile);
+
         meta << "{\n";
         meta << "  \"trigger\": \"" << event.triggerType << "\",\n";
         meta << "  \"startTime\": \"" << event.startTimeStr << "\",\n";
@@ -173,6 +227,7 @@ void CompressionEngine::writeClip(const std::vector<BufferedFrame>& frames, cons
         meta << "  \"isMotionSensor\": " << (event.isMotionSensor ? "true" : "false") << ",\n";
         meta << "  \"isDoorSensor\": " << (event.isDoorSensor ? "true" : "false") << "\n";
         meta << "}\n";
+
         meta.close();
 
         logInfo("Metadata written: " + metaFile);
@@ -183,10 +238,11 @@ void CompressionEngine::writeClip(const std::vector<BufferedFrame>& frames, cons
     }
 }
 
-void CompressionEngine::updateMode()
+// -----------------------------
+// MODE LOGIC (FIXED)
+// -----------------------------
+void CompressionEngine::updateMode(float motionScore)
 {
-    float motionScore = scorer->getMotionScore();
-
     if (motionScore > 0.7f)
         currentMode = CompressionMode::PEAK_PROTECTION;
     else if (motionScore > 0.4f)
@@ -195,6 +251,9 @@ void CompressionEngine::updateMode()
         currentMode = CompressionMode::IDLE;
 }
 
+// -----------------------------
+// PREPROCESSING
+// -----------------------------
 cv::Mat CompressionEngine::preprocessFrame(const cv::Mat& frame)
 {
     if (frame.empty())
