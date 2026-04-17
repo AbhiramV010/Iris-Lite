@@ -1,9 +1,9 @@
 # This is not intended for execution.
-import RPi.GPIO as gpio
 import time
 import platform
 
 if (platform.system() == "Linux"):
+    import RPi.GPIO as gpio
     last_trigger = 0
 
     def start_up(pin):
