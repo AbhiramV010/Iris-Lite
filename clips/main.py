@@ -8,7 +8,7 @@ import time
 import os
 import subprocess 
 
-SSD_PATH = "" # TODO: SOMEONE needs to add the path where clips will be saved 
+SSD_PATH = "C:/delete/clips" # TODO: SOMEONE needs to add the path where clips will be saved 
 BUFFER_MINUTES = 10
 FPS = 24  # TODO: make this the actual camera fps
 FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES) # fps * 60 seconds per min * 10 mins, how many frames to store in RAM
@@ -53,8 +53,6 @@ if __name__ == "__main__":
     ret, frame = cam.read()
     prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-
-
     address = ('127.0.0.1', 8989)
     try:
         l = Listener(address, authkey=b'1000011')
@@ -63,7 +61,6 @@ if __name__ == "__main__":
         while True:
             ret, frame = cam.read()
             if not ret: break
-
 
             h, w, _ = frame.shape
             frame[h-300:h, w-400:w] = 0
@@ -78,7 +75,7 @@ if __name__ == "__main__":
             _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60]) 
             FRAME_BUFFER.append(encoded_frame)
 
-            cv2.imshow('steamic-c6_cam', frame)
+            # cv2.imshow('steamic-c6_cam', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'): break
 
     finally:

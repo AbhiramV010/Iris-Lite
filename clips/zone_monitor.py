@@ -4,18 +4,17 @@ from captureinfo import * # this has info that will be sent to main.py
 from multiprocessing.connection import Client
 import datetime
 from collections import deque
-try: import RPi.GPIO as gpio
-except ModuleNotFoundError: pass
-except Exception as e: print("Something happened while trying to import RPi.GPIO")
-from sensor_helper import *
+# try: import RPi.GPIO as gpio
+# except ModuleNotFoundError: pass
+# except Exception as e: print("Something happened while trying to import RPi.GPIO")
+# from sensor_helper import *
 
-# This script will process in 360p, and the rec in main.py will be in 1080p
 overlap_history = deque(maxlen=10)
 is_overlapping = False
 start_time = None
 end_time = None
 
-def getPrefConts(cnts: list): # get contours that correspond to potential grass(es)
+def getPrefConts(cnts: list):
     centroids = []
     cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
     dists = []
@@ -29,7 +28,7 @@ def getPrefConts(cnts: list): # get contours that correspond to potential grass(
             centroids.append((0, 0))
 
     bigCent = centroids[0]
-    centroids = centroids[1:6] # top 6 largest contours (excl first one)
+    centroids = centroids[1:6]
     
     for c in centroids:
         d = np.sqrt((bigCent[0]-c[0])**2+(bigCent[1]-c[1])**2)
@@ -48,22 +47,18 @@ def startCam():
 
 def defineZone(mask):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
-
     mask=cv2.dilate(mask,kernel,iterations=2)
-    mask=cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel) # NOTE: do not make the kernel bigger, use iteration with the same kernel 
+    mask=cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask=cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours: return []
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
     contourIndex=getPrefConts(contours)
-    
     try: return [contours[contourIndex[0]],contours[contourIndex[1]]]
     except: return []
 
 def detectGrassOverlap(grass_mask, px20):
     global is_overlapping, start_time, end_time
-    
     overlap = cv2.bitwise_and(grass_mask, px20)
     current_count = cv2.countNonZero(overlap)
     overlap_history.append(current_count)
@@ -73,21 +68,17 @@ def detectGrassOverlap(grass_mask, px20):
         is_overlapping = True
         start_time = datetime.datetime.now()
         return None
-    
     elif avg_overlap < 1 and is_overlapping:
         is_overlapping = False
         end_time = datetime.datetime.now()
         duration = (end_time - start_time).total_seconds()
-
         if duration > 2:
             buff_start = (start_time - datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
             buff_end = (end_time + datetime.timedelta(seconds=4)).strftime("%H:%M:%S")
-            x=w
             return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=check_gpio(17), isDoorSensor=check_gpio(27))
-            
     return None
-startCam()    
 
+startCam()    
 ret, frame_raw = cam.read()
 frame = cv2.resize(frame_raw, (640, 360))
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -100,53 +91,46 @@ if grass_zones:
 
 try:
     try: 
-        start_up(17) # door sensor
-        start_up(27) # motion sensor
+        start_up(17)
+        start_up(27)
     except: pass
     while True:
         ret, frame_raw = cam.read()
-        
-        if not ret:
-            break    
+        if not ret: break    
         frame = cv2.resize(frame_raw, (640, 360))
-
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         fgmask = fgbg.apply(frame)
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
         
         contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        contours = sorted(contours,key=cv2.contourArea,reverse=True) # biggest to smallest contours
-        contours = contours[:3]
+        contours = sorted(contours,key=cv2.contourArea,reverse=True)[:3]
         bottom_mask = np.zeros_like(fgmask)
         
         for idv in contours:
             x, y, w, h = cv2.boundingRect(idv)
-            roi_y1 = max(0, y + h - 20)
-            roi_y2 = y + h
-            actual_object_strip = fgmask[roi_y1:roi_y2, x:x+w]
-            bottom_mask[roi_y1:roi_y2, x:x+w] = actual_object_strip
+            roi_y1, roi_y2 = max(0, y + h - 20), y + h
+            bottom_mask[roi_y1:roi_y2, x:x+w] = fgmask[roi_y1:roi_y2, x:x+w]
 
         _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
-        # cv2.imshow("mm",bottom_mask)
+        
+        combined_view = cv2.addWeighted(grass_mask, 0.5, bottom_mask, 1.0, 0)
+        cv2.imshow("Detection Debug", combined_view)
+        
         alert = detectGrassOverlap(grass_mask, bottom_mask)
-
         if alert:
             try: 
                 address = ('127.0.0.1', 8989)
                 if alert.duration > 2.0:
                     with Client(address, authkey=b'1000011') as conn:
                         conn.send(alert)
-            except ConnectionRefusedError: 
-                raise ConnectionError("the main.py file may not be running")
+            except: pass
             
-        if cv2.waitKey(1) & 0xFF == ord('x'):
-            break
+        if cv2.waitKey(1) & 0xFF == ord('x'): break
 finally:
     try:
         close_gpio(17)
         close_gpio(27)
     except: pass
-
 cam.release()
 cv2.destroyAllWindows()

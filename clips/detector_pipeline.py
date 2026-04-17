@@ -1,12 +1,12 @@
 import cv2
 import numpy as np
 from datetime import datetime, timedelta
-try: import RPi.GPIO as gpio
-except ModuleNotFoundError: pass
-except Exception as e: print("Something happened while trying to import RPi.GPIO")
+# try: import RPi.GPIO as gpio
+# except ModuleNotFoundError: pass
+# except Exception as e: print("Something happened while trying to import RPi.GPIO")
 from captureinfo import CaptureClass
 from multiprocessing.connection import Client
-from sensor_helper import *
+# from sensor_helper import *
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
 cap = cv2.VideoCapture(0)
