@@ -1,4 +1,6 @@
 # This is not intended for execution.
+# Previously, the system as a whole would refuse to run if it's on windows (annoying for devs)
+# This ensures that gpio functionality is disabled as a whole if the operating system is not Linux
 import time
 import platform
 

@@ -40,7 +40,7 @@ def startCam():
     cam = cv2.VideoCapture(0)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-    for _ in range(0, 60): cam.read()
+    for _ in range(0, 300): cam.read()
 
 def defineZone(mask):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))

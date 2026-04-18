@@ -1,11 +1,11 @@
 #!/bin/bash
 echo "Timestamp,Script,CPU_Percent,RAM_MB" > process_stats.csv
 
-SCRIPTS=("listener.py" "detector_pipeline.py" "zone_monitor.py" "main.py")
+SCRIPTS=("listener.py" "detector_pipeline.py" "zone_monitor.py" "main.cpp")
 # listener.py -> sound detection
 # detector_pipeline.py -> two tiered GENERAL detection
 # zone_monitor.py -> monitors the presence 
-# main.py -> clip taker & c++ "handshake"
+# main.cpp -> c++ compression software
 
 while true; do
     TIMESTAMP=$(date +"%H:%M:%S")
