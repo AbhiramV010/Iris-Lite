@@ -31,7 +31,7 @@ if (platform.system() == "Linux"):
         
         return (time.time() - last_trigger) < 10
 else: 
-    pass
+    print("the system will run with GPIO functionality off, as no GPIO interface is detected")
 
 if __name__ == "__main__":
     raise ImportError("This file is designed for import, not direct execution.")
