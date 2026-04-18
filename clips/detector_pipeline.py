@@ -99,8 +99,8 @@ try:
                         endTime=buffered_end.strftime("%H:%M:%S"),
                         trigger=f"tiered_cap",
                         duration=round(total_duration, 2),
-                        isMotionSensor=check_gpio(17), 
-                        isDoorSensor=check_gpio(27)
+                        isMotionSensor=check_gpio(27), 
+                        isDoorSensor=check_gpio(17)
                     )
 
                     try:
