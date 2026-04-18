@@ -69,10 +69,8 @@ try:
                 x, y, w, h = cv2.boundingRect(main_obj)
                 current_centroid = (x + w//2, y + h//2)
 
-                 
                 color = (0, 255, 0) 
                  
-
                 if last_centroid:
                     dist = np.sqrt((current_centroid[0]-last_centroid[0])**2 + (current_centroid[1]-last_centroid[1])**2)
                     
@@ -83,12 +81,9 @@ try:
                          
                         color = (0, 0, 255) 
                          
-                
                 last_centroid = current_centroid
 
-                 
                 cv2.circle(vis_frame, current_centroid, 5, color, -1)
-                 
 
                 if persistence_count >= 50: 
                     buffered_start = datetime.now() - timedelta(seconds=5)
@@ -103,13 +98,11 @@ try:
                     except:
                         print("the main.py file may not be running")
         else:
-             
             if last_centroid:
                 cv2.circle(vis_frame, last_centroid, 5, (0, 0, 255), -1) 
              
             last_centroid = None
             persistence_count = 0 
-
          
         cv2.imshow("Centroid Tracker", vis_frame)
         if cv2.waitKey(1) & 0xFF == ord('x'): break
