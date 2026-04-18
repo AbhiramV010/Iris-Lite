@@ -75,7 +75,7 @@ if __name__ == "__main__":
             _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 60]) 
             FRAME_BUFFER.append(encoded_frame)
 
-            # cv2.imshow('steamic-c6_cam', frame)
+            cv2.imshow('irisLiteCam', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'): break
 
     finally:

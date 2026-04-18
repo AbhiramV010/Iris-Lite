@@ -11,9 +11,11 @@ cap.set(3, 320)
 cap.set(4, 240) 
 last_avg_lum = None
 
-SENSITIVITY = 0.03
-LUM_THRESH = 40 
-ALPHA = 0.05 # keep a running average of the last 39 frames.
+for _ in range(0,300): ret,frame=cap.read()
+
+SENSITIVITY = 0.25  
+LUM_THRESH = 90     
+ALPHA = 0.03        
 
 global ADDRESS, AUTHKEY
 ADDRESS = ('127.0.0.1', 8989)
@@ -59,6 +61,7 @@ try:
          
 
         if is_triggered:
+            print("TRIG") # debug
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             if contours:
@@ -67,7 +70,6 @@ try:
                 current_centroid = (x + w//2, y + h//2)
 
                  
-                # Default color is Green when active, shifts to Red if logic fails below
                 color = (0, 255, 0) 
                  
 
@@ -79,7 +81,7 @@ try:
                     else:
                         persistence_count = max(0, persistence_count - 1)
                          
-                        color = (0, 0, 255) # Red if stagnant
+                        color = (0, 0, 255) 
                          
                 
                 last_centroid = current_centroid
@@ -88,7 +90,7 @@ try:
                 cv2.circle(vis_frame, current_centroid, 5, color, -1)
                  
 
-                if persistence_count >= 20:
+                if persistence_count >= 50: 
                     buffered_start = datetime.now() - timedelta(seconds=5)
                     buffered_end = datetime.now() + timedelta(seconds=5)
                     total_duration = (buffered_end - buffered_start).total_seconds()
@@ -103,7 +105,7 @@ try:
         else:
              
             if last_centroid:
-                cv2.circle(vis_frame, last_centroid, 5, (0, 0, 255), -1) # Red because entropy/motion not triggered
+                cv2.circle(vis_frame, last_centroid, 5, (0, 0, 255), -1) 
              
             last_centroid = None
             persistence_count = 0 
