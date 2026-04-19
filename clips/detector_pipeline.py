@@ -62,9 +62,8 @@ try:
         pass
 
     while True:    
-        frame = shared_frame.copy()
-        vis_frame = cv2.resize(frame, (320, 240))
-        is_triggered, gray, mask = tier1Actions(frame)
+        vis_frame = cv2.resize(shared_frame, (320, 240))
+        is_triggered, gray, mask = tier1Actions(vis_frame) 
 
         if is_triggered:
             roi = gray[mask > 0] if np.any(mask) else np.array([])
