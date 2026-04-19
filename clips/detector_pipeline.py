@@ -38,7 +38,7 @@ def calculate_entropy(roi):
 
 def tier1Actions(frame):
     global last_avg_lum
-    small = cv2.resize(frame, (320, 240))
+    small = cv2.resize(frame, (160, 120))
     gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
     curr = np.mean(gray)
     
@@ -50,7 +50,7 @@ def tier1Actions(frame):
     last_avg_lum = (ALPHA * curr) + ((1 - ALPHA) * last_avg_lum)
 
     mask = fgbg.apply(gray)
-    motion = (cv2.countNonZero(mask) / (320*240)) > SENSITIVITY
+    motion = (cv2.countNonZero(mask) / (160*120)) > SENSITIVITY
     
     return (triggered or motion), gray, mask
 

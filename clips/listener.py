@@ -34,7 +34,7 @@ audio_buffer = collections.deque(maxlen=RATE * 3)
 
 def pre_process(audio_np):
     audio_np = librosa.util.normalize(audio_np)
-    spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=128, hop_length=327)
+    spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=64, hop_length=327)
     log_spec = librosa.power_to_db(spec, ref=1.0)
     log_spec = (log_spec - np.min(log_spec)) / (np.max(log_spec) - np.min(log_spec) + 1e-6)
     

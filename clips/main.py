@@ -80,11 +80,9 @@ if __name__ == "__main__":
         while True:
             t_start = time.time()
 
-            frame = stream_view.copy()
-
-            _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 15]) 
+            frame = cv2.resize(stream_view, (640, 360)) 
             with buffer_lock:
-                FRAME_BUFFER.append(encoded_frame)
+                FRAME_BUFFER.append(frame)
 
             # Limit to 24 FPS to save CPU
             elapsed = time.time() - t_start

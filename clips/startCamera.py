@@ -43,6 +43,7 @@ if __name__ == "__main__":
 
             current_zone = frame[P_Y:P_Y+P_H, P_X:P_X+P_W].copy()
 
+            time.sleep(0.06) 
             if prev_zone is not None:
                 diff = cv2.absdiff(current_zone, prev_zone)
                 gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
