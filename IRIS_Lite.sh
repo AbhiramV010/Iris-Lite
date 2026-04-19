@@ -16,4 +16,4 @@ python ./clips/zone_monitor.py &
 echo Zone monitor started
 
 g++ ./Compression/src/main.cpp &
-echo All systems started   
+echo All systems started  
