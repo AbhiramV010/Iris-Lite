@@ -22,7 +22,8 @@ if (platform.system() == "Linux"):
 
     def check_gpio(pin):
         gpio.setmode(gpio.BCM)
-        gpio.setup(pin, gpio.IN, pull_up_down=gpio.PUD_UP)
+        try: gpio.setup(pin, gpio.IN, pull_up_down=gpio.PUD_UP)
+        except: pass
         
         try:
             gpio.add_event_detect(pin, gpio.FALLING, callback=update_time, bouncetime=200)
