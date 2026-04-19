@@ -9,4 +9,6 @@ uxterm -T "Zone Monitor" -e "python3 ./clips/zone_monitor.py" &
 
 uxterm -T "Compression System" -e "sh -c 'g++ ./Compression/src/main.cpp -o ./Compression/src/compressor && ./Compression/src/compressor; exec bash'" &
 
-echo All systems started in labeled uxterm windows.
+top
+
+echo All systems started.
