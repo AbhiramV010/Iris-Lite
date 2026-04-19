@@ -8,7 +8,9 @@ import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 from sensor_helper import *
+import warnings
 
+warnings.simplefilter('ignore', Warning) # ignore warnings, don't want a whole load of garbage in the terminal  
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
 SOC = [2, 3, 4, 5, 6, 7] 
 
