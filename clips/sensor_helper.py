@@ -28,7 +28,7 @@ if (platform.system() == "Linux"):
         try:
             gpio.add_event_detect(pin, gpio.FALLING, callback=update_time, bouncetime=200)
         except RuntimeError:
-            pass 
+            return False 
         
         return (time.time() - last_trigger) < 10
 else: 
