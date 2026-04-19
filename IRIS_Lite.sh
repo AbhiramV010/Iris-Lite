@@ -1,4 +1,4 @@
-echo Starting the Iris_Lite camera system
+echo Starting the Iris_Lite camera system.
 
 python /clips/startCamera.py
 echo Camera util started
