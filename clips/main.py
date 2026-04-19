@@ -40,16 +40,15 @@ def save_clip_worker(trigger_name, capture_class: CaptureClass):
         for i, f in enumerate(FRAME_BUFFER): 
             with open(f"{tmp}/{i:05d}.jpg", "wb") as j: 
                 j.write(f) 
-    print(f"start: {capture_class.startTime} | end: {capture_class.endTime}")
     if capture_class.isMotionSensor == True:
         cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_mthn.mp4"
-        print("clip taken") 
+        print(f"start: {capture_class.startTime} | end: {capture_class.endTime}")
     elif capture_class.isDoorSensor == True:
         cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_drsn.mp4"
-        print("clip taken") 
+        print(f"start: {capture_class.startTime} | end: {capture_class.endTime}")
     else: 
         cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}.mp4"
-        print("clip taken") 
+        print(f"start: {capture_class.startTime} | end: {capture_class.endTime}")
     
     subprocess.run(cmd.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) 
     shutil.rmtree(tmp) 
