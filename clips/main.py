@@ -40,7 +40,7 @@ def save_clip_worker(trigger_name, capture_class: CaptureClass):
         for i, f in enumerate(FRAME_BUFFER): 
             with open(f"{tmp}/{i:05d}.jpg", "wb") as j: 
                 j.write(f) 
-
+    print(f"start: {capture_class.startTime} | end: {capture_class.endTime}")
     if capture_class.isMotionSensor == True:
         cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_mthn.mp4"
     elif capture_class.isDoorSensor == True:
