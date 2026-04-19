@@ -76,15 +76,15 @@ if __name__ == "__main__":
         l = Listener(address, authkey=b'1000011')
         threading.Thread(target=clipRecorder, args=(l,), daemon=True).start()
 
-
         while True:
             t_start = time.time()
 
-            frame = cv2.resize(stream_view, (640, 360)) 
-            with buffer_lock:
-                FRAME_BUFFER.append(frame)
+            frame = stream_view.copy()
 
-            # Limit to 24 FPS to save CPU
+            _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 15]) 
+            with buffer_lock:
+                FRAME_BUFFER.append(encoded_frame)
+
             elapsed = time.time() - t_start
             time.sleep(max(1/FPS - elapsed, 0.001))
 

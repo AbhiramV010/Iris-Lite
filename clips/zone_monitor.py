@@ -74,7 +74,7 @@ try:
 except FileNotFoundError:
     sys.exit(1)
 
-fgbg = cv2.bgsegm.createBackgroundSubtractorMOG()
+fgbg = cv2.createBackgroundSubtractorKNN(history=350, dist2Threshold=400.0, detectShadows=False) 
 frame_raw = shared_frame.copy()
 frame = cv2.resize(frame_raw, (640, 360))
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)

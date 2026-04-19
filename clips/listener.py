@@ -10,7 +10,7 @@ from captureinfo import CaptureClass
 from sensor_helper import *
 import warnings
 
-warnings.simplefilter('ignore', Warning) # ignore warnings, don't want a whole load of garbage in the terminal  
+warnings.simplefilter('ignore', Warning) 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
 SOC = [2, 3, 4, 5, 6, 7] 
 
@@ -19,7 +19,7 @@ RATE = 16000
 CHUNK = 4096 
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
-THRESHOLD = 0.08 # a Root Mean Square value that acts as a threshold (in decibels, 0.1 RMS relative to 1.0 RMS is -22 dB SPLt)
+THRESHOLD = 0.08 
 
 interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
@@ -34,7 +34,7 @@ audio_buffer = collections.deque(maxlen=RATE * 3)
 
 def pre_process(audio_np):
     audio_np = librosa.util.normalize(audio_np)
-    spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=64, hop_length=327)
+    spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=128, hop_length=327)
     log_spec = librosa.power_to_db(spec, ref=1.0)
     log_spec = (log_spec - np.min(log_spec)) / (np.max(log_spec) - np.min(log_spec) + 1e-6)
     
