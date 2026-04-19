@@ -96,8 +96,8 @@ try:
                         endTime=buffered_end.strftime("%H:%M:%S"),
                         trigger=f"{current_label} ({max_confidence*100:.1f}%)",
                         duration=round(total_duration, 2),
-                        isMotionSensor=check_gpio(17), 
-                        isDoorSensor=check_gpio(27)
+                        isMotionSensor=check_gpio(27), 
+                        isDoorSensor=check_gpio(17)
                     )
                     print(f"\nCaptured: {new_capture.trigger}")
 
