@@ -3,12 +3,20 @@ import numpy as np
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 from multiprocessing.connection import Client
+from multiprocessing import shared_memory
 from sensor_helper import *
+import sys
+
+W, H = 1920, 1080
+SHM_NAME = "iris_live_frame"
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
-cap = cv2.VideoCapture(0)
-cap.set(3, 320)
-cap.set(4, 240) 
+
+try:
+    shm = shared_memory.SharedMemory(name=SHM_NAME)
+    shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
+except FileNotFoundError:
+    sys.exit(1)
 
 SENSITIVITY = 0.10
 LUM_THRESH = 90     
@@ -30,7 +38,8 @@ def calculate_entropy(roi):
 
 def tier1Actions(frame):
     global last_avg_lum
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    small = cv2.resize(frame, (320, 240))
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
     curr = np.mean(gray)
     
     if last_avg_lum is None: 
@@ -45,10 +54,6 @@ def tier1Actions(frame):
     
     return (triggered or motion), gray, mask
 
-for _ in range(0, 150): 
-    ret, frame = cap.read()
-    if ret: tier1Actions(frame)
-
 try: 
     try: 
         start_up(17) # door sensor
@@ -57,18 +62,13 @@ try:
         pass
 
     while True:    
-        ret, frame = cap.read()
-        if not ret: break
-
-        vis_frame = frame.copy()
+        frame = shared_frame.copy()
+        vis_frame = cv2.resize(frame, (320, 240))
         is_triggered, gray, mask = tier1Actions(frame)
 
         if is_triggered:
-            print("TRIG") # debug
-            
             roi = gray[mask > 0] if np.any(mask) else np.array([])
             entropy_val = calculate_entropy(roi) if roi.size > 0 else 0
-            
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             if entropy_val > 3.0 and contours:
@@ -79,7 +79,6 @@ try:
                  
                 if last_centroid:
                     dist = np.sqrt((current_centroid[0]-last_centroid[0])**2 + (current_centroid[1]-last_centroid[1])**2)
-                    
                     if dist > 10: 
                         persistence_count += 1
                     else:
@@ -90,24 +89,19 @@ try:
                 cv2.circle(vis_frame, current_centroid, 5, color, -1)
 
                 if persistence_count >= 50: 
-                    buffered_start = datetime.now() - timedelta(seconds=5)
-                    buffered_end = datetime.now() + timedelta(seconds=5)
-                    total_duration = (buffered_end - buffered_start).total_seconds()
-                    
                     new_capture = CaptureClass(
-                        startTime=buffered_start.strftime("%H:%M:%S"), 
-                        endTime=buffered_end.strftime("%H:%M:%S"),
+                        startTime=(datetime.now() - timedelta(seconds=5)).strftime("%H:%M:%S"), 
+                        endTime=(datetime.now() + timedelta(seconds=5)).strftime("%H:%M:%S"),
                         trigger=f"tiered_cap",
-                        duration=round(total_duration, 2),
+                        duration=10.0,
                         isMotionSensor=check_gpio(27), 
                         isDoorSensor=check_gpio(17)
                     )
-
                     try:
                         with Client(ADDRESS, authkey=AUTHKEY) as conn:
                             conn.send(new_capture)
                     except:
-                        print("the main.py file may not be running")
+                        pass
         else:
             if last_centroid:
                 cv2.circle(vis_frame, last_centroid, 5, (0, 0, 255), -1) 
@@ -122,5 +116,5 @@ finally:
         close_gpio(17)
         close_gpio(27)
     except: pass
-    cap.release()
+    shm.close()
     cv2.destroyAllWindows()

@@ -1,10 +1,15 @@
 import cv2
 import numpy as np
-from captureinfo import * # this has info that will be sent to main.py
+from captureinfo import * 
 from multiprocessing.connection import Client
+from multiprocessing import shared_memory
 import datetime
 from collections import deque
 from sensor_helper import *
+import sys
+
+W, H = 1920, 1080
+SHM_NAME = "iris_live_frame"
 
 overlap_history = deque(maxlen=10)
 is_overlapping = False
@@ -23,24 +28,13 @@ def getPrefConts(cnts: list):
             centroids.append((cx, cy))
         else:
             centroids.append((0, 0))
-
     bigCent = centroids[0]
     centroids = centroids[1:6]
-    
     for c in centroids:
         d = np.sqrt((bigCent[0]-c[0])**2+(bigCent[1]-c[1])**2)
         dists.append(d)
-
     try: return tuple((0,dists.index(min(dists))))
     except: return []
-
-def startCam():
-    global cam, fgbg
-    fgbg = cv2.createBackgroundSubtractorMOG2(history=200, detectShadows=False)
-    cam = cv2.VideoCapture(0)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-    for _ in range(0, 300): cam.read()
 
 def defineZone(mask):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4, 4))
@@ -60,7 +54,6 @@ def detectGrassOverlap(grass_mask, px20):
     current_count = cv2.countNonZero(overlap)
     overlap_history.append(current_count)
     avg_overlap = sum(overlap_history) / len(overlap_history)
-    
     if avg_overlap >= 3 and not is_overlapping:
         is_overlapping = True
         start_time = datetime.datetime.now()
@@ -75,13 +68,18 @@ def detectGrassOverlap(grass_mask, px20):
             return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=check_gpio(17), isDoorSensor=check_gpio(27))
     return None
 
-startCam()    
-ret, frame_raw = cam.read()
+try:
+    shm = shared_memory.SharedMemory(name=SHM_NAME)
+    shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
+except FileNotFoundError:
+    sys.exit(1)
+
+fgbg = cv2.createBackgroundSubtractorMOG2(history=200, detectShadows=False)
+frame_raw = shared_frame.copy()
 frame = cv2.resize(frame_raw, (640, 360))
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 grassRange = cv2.inRange(hsv, np.array([25, 30, 20]), np.array([95, 255, 255]))
 grass_zones = defineZone(grassRange)
-
 grass_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 if grass_zones:
     cv2.drawContours(grass_mask, grass_zones, -1, 255, thickness=-1)
@@ -92,42 +90,34 @@ try:
         start_up(27)
     except: pass
     while True:
-        ret, frame_raw = cam.read()
-        if not ret: break    
+        frame_raw = shared_frame.copy()
         frame = cv2.resize(frame_raw, (640, 360))
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         fgmask = fgbg.apply(frame)
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
-        
         contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         contours = sorted(contours,key=cv2.contourArea,reverse=True)[:3]
         bottom_mask = np.zeros_like(fgmask)
-        
         for idv in contours:
             x, y, w, h = cv2.boundingRect(idv)
             roi_y1, roi_y2 = max(0, y + h - 20), y + h
             bottom_mask[roi_y1:roi_y2, x:x+w] = fgmask[roi_y1:roi_y2, x:x+w]
-
         _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
-        
         combined_view = cv2.addWeighted(grass_mask, 0.5, bottom_mask, 1.0, 0)
         cv2.imshow("Detection Debug", combined_view)
-        
         alert = detectGrassOverlap(grass_mask, bottom_mask)
         if alert:
             try: 
                 address = ('127.0.0.1', 8989)
-                if alert.duration > 2.0:
-                    with Client(address, authkey=b'1000011') as conn:
-                        conn.send(alert)
+                with Client(address, authkey=b'1000011') as conn:
+                    conn.send(alert)
             except: pass
-            
         if cv2.waitKey(1) & 0xFF == ord('x'): break
 finally:
     try:
         close_gpio(17)
         close_gpio(27)
     except: pass
-cam.release()
-cv2.destroyAllWindows()
+    shm.close()
+    cv2.destroyAllWindows()

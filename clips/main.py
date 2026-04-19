@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from multiprocessing.connection import Listener
+from multiprocessing import shared_memory
 import threading
 from captureinfo import CaptureClass
 from collections import deque
@@ -18,17 +19,13 @@ FPS = 24
 FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES) 
 MCL_CURRENT = 1
 MCL_FUTURE = 2
-
-# History for reactive mask
-ZONE_HISTORY = deque(maxlen=5)
-# Privacy zone relative to 1080p: Bottom-right 600x450
-ZONE_X, ZONE_Y, ZONE_W, ZONE_H = 1320, 630, 600, 450
+SHM_NAME = "iris_live_frame"
 
 def lock_memory():
     try:
         ctypes.CDLL("libc.so.6").mlockall(MCL_CURRENT | MCL_FUTURE)
     except Exception as e:
-        warnings.warn("Memory-locking failed. Unexpected things could happen.", RuntimeWarning)
+        warnings.warn("Failed to lock memory.", RuntimeWarning)
 
 buffer_lock = threading.Lock()
 
@@ -64,31 +61,13 @@ def clipRecorder(l):
         except: continue
 
 if __name__ == "__main__":
-    cam = cv2.VideoCapture(0)
-    if not cam.isOpened():
-        cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
-    
-    if not cam.isOpened():
+    lock_memory()
+
+    try:
+        shm = shared_memory.SharedMemory(name=SHM_NAME)
+        stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
+    except FileNotFoundError:
         sys.exit(1)
-
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-    cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-    time.sleep(1.0)
-    
-    frame = None
-    for _ in range(10):
-        ret, frame = cam.read()
-        if ret and frame is not None:
-            break
-        time.sleep(0.1)
-
-    if frame is None:
-        cam.release()
-        sys.exit(1)
-
-    small_prev = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (480, 270))
 
     address = ('127.0.0.1', 8989)
     try:
@@ -96,38 +75,9 @@ if __name__ == "__main__":
         threading.Thread(target=clipRecorder, args=(l,), daemon=True).start()
 
         while True:
-            ret, frame = cam.read()
-            if not ret or frame is None: continue
+            frame = stream_view.copy()
 
-            # process the privacy zone
-            try:
-                roi = frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] 
-                roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-
-                if len(ZONE_HISTORY) == 5:
-                    hist_avg = np.mean(list(ZONE_HISTORY), axis=0).astype(np.uint8)
-                    t_diff = cv2.absdiff(roi_gray, hist_avg)
-                    _, r_mask = cv2.threshold(t_diff, 25, 255, cv2.THRESH_BINARY)
-                    r_mask = cv2.dilate(r_mask, np.ones((3,3), np.uint8), iterations=1)
-                    
-                    abstract_roi = cv2.bitwise_and(roi, roi, mask=r_mask)
-                    frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] = 0
-                    frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] = abstract_roi
-                else:
-                    frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] = 0
-
-                ZONE_HISTORY.append(roi_gray)
-            except:
-                pass
-
-            # making the privacy zone
-            small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (480, 270))
-            diff = cv2.absdiff(small_prev, small_gray)
-            _, motion_mask = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
-            motion_mask = cv2.dilate(motion_mask, np.ones((3,3), np.uint8), iterations=1)
-            small_prev = small_gray
-
-            _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 40])
+            _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 15]) 
             with buffer_lock:
                 FRAME_BUFFER.append(encoded_frame)
 
@@ -135,5 +85,5 @@ if __name__ == "__main__":
             if cv2.waitKey(1) & 0xFF == ord('q'): break
 
     finally:
-        cam.release()
+        shm.close()
         cv2.destroyAllWindows()
