@@ -13,7 +13,7 @@ import ctypes
 import warnings
 import sys
 
-SSD_PATH = "clipDrive/clips" 
+
 BUFFER_MINUTES = 5 
 FPS = 24  
 FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES) 
