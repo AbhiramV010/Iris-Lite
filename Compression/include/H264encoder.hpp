@@ -11,17 +11,19 @@ public:
     ~H264Encoder();
 
     bool open(const std::string& outputPath);
-
     bool writeFrame(const cv::Mat& frame);
-
     void close();
 
     bool isOpen() const { return ffmpegPipe != nullptr; }
 
 private:
-    int width, height, fps, bitrate;
+    int width;
+    int height;
+    int fps;
+    int bitrate;
     bool useHardware;
-    FILE* ffmpegPipe;
+
+    FILE* ffmpegPipe = nullptr;
     std::string ffmpegCommand;
 
     std::string buildCommand(const std::string& outputPath);

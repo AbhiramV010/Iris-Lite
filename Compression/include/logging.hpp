@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-
+#include "logging.hpp"
 // Toggle debug mode globally
 extern bool LOG_DEBUG_MODE;
 

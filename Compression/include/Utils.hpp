@@ -2,7 +2,7 @@
 
 #include <string>
 #include <vector>
-
+#include <algorithm>
 // FFmpeg command builder (platform + mode aware)
 std::string buildFFmpegCommand(
     const std::string& outputPath,

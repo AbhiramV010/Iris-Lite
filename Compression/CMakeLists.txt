@@ -9,17 +9,17 @@ find_package(OpenCV REQUIRED)
 
 add_executable(PerceptualCompressor
     src/main.cpp
-    src/Compressor.cpp
-    src/FrameBuffer.cpp
-    src/FrameProcessor.cpp
-    src/EventAligner.cpp
-    src/PerceptualScorer.cpp
+    "src/CompressionEngine.cpp"
+    
+    
+    
+    
     src/PrivacyMask.cpp
     src/Utils.cpp
     src/logging.cpp
     src/Config.cpp
     src/H264encoder.cpp
-)
+  "src/ImportanceMap.cpp"  "src/AdaptiveEncoderController.cpp" "src/ImportanceEngine.cpp" "src/CompressionPolicy.cpp" "src/TrigerEngine.cpp" "src/TemporalBuffer.cpp")
 
 target_include_directories(PerceptualCompressor PRIVATE
     ${CMAKE_SOURCE_DIR}/include
