@@ -5,6 +5,7 @@
 #include "Config.hpp"
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
+#include "Utils.hpp"
 
 int main()
 {
@@ -26,15 +27,39 @@ int main()
         return -1;
     }
 
-    logInfo("Engine running with config.json settings");
+    logInfo("Background watcher started");
 
-    // Keep process alive
+    const std::string inputFolder = "input";
+    const std::string processedFolder = "processed";
+
+    ensureDirectory(processedFolder);
+
     while (true)
     {
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        auto files = listVideoFiles(inputFolder);
+
+        for (const auto& file : files)
+        {
+            logInfo("Found file: " + file);
+
+            engine.processVideoFile(file);
+
+            // Move processed file
+            std::string filename =
+                file.substr(file.find_last_of("/\\") + 1);
+
+            std::string dst = processedFolder + "/" + filename;
+
+            if (moveFile(file, dst))
+            {
+                logInfo("Moved to processed: " + filename);
+            }
+        }
+
+        // 🔥 IMPORTANT: don't hammer CPU
+        std::this_thread::sleep_for(std::chrono::seconds(3));
     }
 
     engine.shutdown();
-
     return 0;
 }

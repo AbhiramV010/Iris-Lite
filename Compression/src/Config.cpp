@@ -38,7 +38,7 @@ bool loadConfig(Config& cfg, const std::string& path)
     cfg.useFaces = j.value("use_faces", true);
     cfg.useMotion = j.value("use_motion", true);
     cfg.useEdges = j.value("use_edges", true);
-
+    cfg.fps = j.value("fps", 24);
     cfg.crf = j.value("crf", 22);
 
     // Load privacy zones

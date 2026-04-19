@@ -30,7 +30,7 @@ public:
 
     void pushFrame(const cv::Mat& frame, uint64_t idx);
 
-private:
+public:
     // 🔧 CORE PIPELINE
     void processVideoFile(const std::string& path);
     struct FastPathState

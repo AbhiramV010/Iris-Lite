@@ -12,8 +12,10 @@ public:
 
     Result evaluate(const cv::Mat& frame, const cv::Mat& prev);
 
-private:
-    float motionThreshold = 0.02f; 
-public:
+    void setFPS(float f) { fps = f; }
     void setMotionThreshold(float t) { motionThreshold = t; }
+
+private:
+    float motionThreshold = 0.02f;
+    float fps = 24.0f;
 };

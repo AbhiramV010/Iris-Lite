@@ -12,5 +12,5 @@ public:
     float getGlobal() const;
 
 private:
-    float global;
+    float global = 0.0f;
 };

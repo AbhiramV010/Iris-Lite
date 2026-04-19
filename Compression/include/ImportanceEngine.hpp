@@ -19,7 +19,8 @@ public:
 private:
     int w;
     int h;
-    const Config& cfg;
+private:
+    Config cfg;   
 
     cv::CascadeClassifier faceCascade;
 };

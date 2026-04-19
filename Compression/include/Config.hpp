@@ -9,7 +9,7 @@ struct Config
 
     int encodeWidth;
     int encodeHeight;
-
+    int fps;
     int perceptualWidth;
     int perceptualHeight;
 

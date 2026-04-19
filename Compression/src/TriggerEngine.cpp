@@ -4,15 +4,13 @@
 TriggerEngine::Result TriggerEngine::evaluate(
     const cv::Mat& frame,
     const cv::Mat& prev)
-
 {
-
     Result r;
 
     if (frame.empty() || prev.empty())
     {
         r.motion = 0.0f;
-        r.triggerDeepAnalysis = true; // fallback safety
+        r.triggerDeepAnalysis = true;
         return r;
     }
 
@@ -24,8 +22,10 @@ TriggerEngine::Result TriggerEngine::evaluate(
     r.motion =
         static_cast<float>((m[0] + m[1] + m[2]) / 3.0 / 255.0);
 
-    // 🔥 FAST GATE DECISION
-    r.triggerDeepAnalysis = (r.motion > motionThreshold);
+    // FAST GATE DECISION
+    float adaptiveThreshold = motionThreshold * (24.0f / fps);
+
+    r.triggerDeepAnalysis = (r.motion > adaptiveThreshold);
 
     return r;
 }
