@@ -95,7 +95,6 @@ if __name__ == "__main__":
         while True:
             t_start = time.time()
 
-            # Using .copy() to ensure we have a stable frame before it updates in SHM
             frame = stream_view.copy()
 
             with buffer_lock:
