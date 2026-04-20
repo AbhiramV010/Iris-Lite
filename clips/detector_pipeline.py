@@ -89,13 +89,8 @@ try:
 
                 if persistence_count >= 50: 
                     new_capture = CaptureClass(
-                        startTime=(datetime.now() - timedelta(seconds=5)).strftime("%H:%M:%S"), 
-                        endTime=(datetime.now() + timedelta(seconds=5)).strftime("%H:%M:%S"),
-                        trigger=f"tiered_cap",
-                        duration=10.0,
-                        isMotionSensor=check_gpio(27), 
-                        isDoorSensor=check_gpio(17)
-                    )
+                        startTime=(datetime.now() - timedelta(seconds=5)).strftime("%H:%M:%S"), endTime=(datetime.now() + timedelta(seconds=5)).strftime("%H:%M:%S"),
+                        trigger=f"tiered_cap", duration=10.0, isMotionSensor=check_gpio(27), isDoorSensor=check_gpio(17))
                     try:
                         with Client(ADDRESS, authkey=AUTHKEY) as conn:
                             conn.send(new_capture)
