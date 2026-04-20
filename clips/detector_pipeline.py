@@ -7,7 +7,7 @@ from multiprocessing import shared_memory
 from sensor_helper import *
 import sys
 
-W, H = 1920, 1080
+W, H = 1280, 720
 SHM_NAME = "iris_live_frame"
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
@@ -16,7 +16,7 @@ try:
     shm = shared_memory.SharedMemory(name=SHM_NAME)
     shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
 except FileNotFoundError:
-    sys.exit(1)
+    raise OSError("Camera not plugged in, OR main.py & startCamera.py aren't running")
 
 SENSITIVITY = 0.10
 LUM_THRESH = 90     
