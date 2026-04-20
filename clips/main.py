@@ -39,28 +39,35 @@ audio_proc = subprocess.Popen([
 
 def save_clip_worker(trigger_name, capture_class: CaptureClass): 
     ts = int(time.time()) 
-    tmp = f"/dev/shm/t_{ts}"
-    os.makedirs(tmp, exist_ok=True) 
-
-    with buffer_lock:
-        for i, f in enumerate(FRAME_BUFFER): 
-            with open(f"{tmp}/{i:05d}.jpg", "wb") as j: 
-                j.write(f) 
+    raw_tmp = f"/dev/shm/t_{ts}.raw"
     
+    with buffer_lock:
+        frames = list(FRAME_BUFFER)
+
+    if not frames:
+        return
+
+    with open(raw_tmp, "wb") as f:
+        for frame in frames:
+            f.write(frame.tobytes())
+
     suffix = "mthn" if capture_class.isMotionSensor else "drsn" if capture_class.isDoorSensor else ""
     label = f"_{suffix}" if suffix else ""
     out_path = f"{SSD_PATH}/{trigger_name}_{ts}{label}.mp4"
 
     cmd = [
-        "ffmpeg", "-y", "-framerate", str(FPS), "-i", f"{tmp}/%05d.jpg",
-        "-i", AUDIO_TMP, "-c:v", "h264_v4l2m2m", "-b:v", "2M",
+        "ffmpeg", "-y", 
+        "-f", "rawvideo", "-pixel_format", "bgr24", "-video_size", "1920x1080", "-framerate", str(FPS), "-i", raw_tmp,
+        "-i", AUDIO_TMP, 
+        "-c:v", "h264_v4l2m2m", "-b:v", "4M",
         "-c:a", "copy", "-map", "0:v:0", "-map", "1:a:0", 
         "-shortest", out_path
     ]
     
     print(f"start: {capture_class.startTime} | end: {capture_class.endTime} | reason: {capture_class.trigger}")
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) 
-    shutil.rmtree(tmp) 
+    if os.path.exists(raw_tmp):
+        os.remove(raw_tmp)
 
 def clipRecorder(l):
     while True:
@@ -88,11 +95,11 @@ if __name__ == "__main__":
         while True:
             t_start = time.time()
 
+            # Using .copy() to ensure we have a stable frame before it updates in SHM
             frame = stream_view.copy()
 
-            _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 15]) 
             with buffer_lock:
-                FRAME_BUFFER.append(encoded_frame)
+                FRAME_BUFFER.append(frame)
 
             elapsed = time.time() - t_start
             time.sleep(max(1/FPS - elapsed, 0.001))
