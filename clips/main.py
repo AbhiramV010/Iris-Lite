@@ -8,7 +8,6 @@ from collections import deque
 import time
 import os
 import subprocess
-import shutil
 import ctypes
 import warnings
 import sys
@@ -93,9 +92,7 @@ if __name__ == "__main__":
 
         while True:
             t_start = time.time()
-
             frame = stream_view.copy()
-
             with buffer_lock:
                 _, compressed_frame = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 25]) # compress the frame 
                 FRAME_BUFFER.append(compressed_frame)
