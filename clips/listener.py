@@ -27,8 +27,20 @@ input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
 p = pyaudio.PyAudio()
-stream = p.open(format=pyaudio.paFloat32, channels=1, rate=RATE,
-                input=True, frames_per_buffer=CHUNK)
+device_index = None
+
+for i in range(p.get_device_count()):
+    dev_info = p.get_device_info_by_index(i)
+    if "default" in dev_info['name'] or "dsnoop" in dev_info['name']:
+        device_index = i
+        break
+
+stream = p.open(format=pyaudio.paFloat32, 
+                channels=1, 
+                rate=RATE,
+                input=True, 
+                input_device_index=device_index,
+                frames_per_buffer=CHUNK)
 
 audio_buffer = collections.deque(maxlen=RATE * 3)
 

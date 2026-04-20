@@ -33,11 +33,12 @@ buffer_lock = threading.Lock()
 os.makedirs(SSD_PATH, exist_ok=True)
 
 audio_proc = subprocess.Popen([
-    "ffmpeg", "-y", "-f", "alsa", "-ac", "1", "-i", "default", 
+    "ffmpeg", "-y", "-f", "alsa", "-ac", "1", "-i", "hw:0,0,dsnoop",
     "-c:a", "aac", "-b:a", "48k", AUDIO_TMP
 ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def save_clip_worker(trigger_name, capture_class: CaptureClass): 
+    os.nice(10)
     ts = int(time.time()) 
     raw_tmp = f"/dev/shm/t_{ts}.raw"
     
@@ -48,8 +49,10 @@ def save_clip_worker(trigger_name, capture_class: CaptureClass):
         return
 
     with open(raw_tmp, "wb") as f:
-        for frame in frames:
-            f.write(frame.tobytes())
+        for comp_frame in frames:
+            raw_frame = cv2.imdecode(comp_frame, cv2.IMREAD_COLOR)
+            if raw_frame is not None:
+                f.write(raw_frame.tobytes())
 
     suffix = "mthn" if capture_class.isMotionSensor else "drsn" if capture_class.isDoorSensor else ""
     label = f"_{suffix}" if suffix else ""
@@ -98,7 +101,8 @@ if __name__ == "__main__":
             frame = stream_view.copy()
 
             with buffer_lock:
-                FRAME_BUFFER.append(frame)
+                _, compressed_frame = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 25]) # compress the frame 
+                FRAME_BUFFER.append(compressed_frame)
 
             elapsed = time.time() - t_start
             time.sleep(max(1/FPS - elapsed, 0.001))
