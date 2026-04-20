@@ -58,13 +58,9 @@ def save_clip_worker(trigger_name, capture_class: CaptureClass):
     label = f"_{suffix}" if suffix else ""
     out_path = f"{SSD_PATH}/{trigger_name}_{ts}{label}.mp4"
 
-    cmd = [
-        "ffmpeg", "-y", 
-        "-f", "rawvideo", "-pixel_format", "bgr24", "-video_size", "1920x1080", "-framerate", str(FPS), "-i", raw_tmp,
-        "-i", AUDIO_TMP, 
-        "-c:v", "h264_v4l2m2m", "-b:v", "4M",
-        "-c:a", "copy", "-map", "0:v:0", "-map", "1:a:0", 
-        "-shortest", out_path
+    cmd = ["ffmpeg", "-y",  "-f", "rawvideo", "-pixel_format", "bgr24", "-video_size", "1920x1080", "-framerate",
+           str(FPS), "-i", raw_tmp,"-i", AUDIO_TMP, "-c:v", "h264_v4l2m2m", "-b:v", "4M", "-c:a", "copy", "-map",
+            "0:v:0", "-map", "1:a:0", "-shortest", out_path
     ]
     
     print(f"start: {capture_class.startTime} | end: {capture_class.endTime} | reason: {capture_class.trigger}")
