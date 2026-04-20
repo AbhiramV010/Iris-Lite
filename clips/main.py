@@ -20,6 +20,7 @@ FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES)
 MCL_CURRENT = 1
 MCL_FUTURE = 2
 SHM_NAME = "iris_live_frame"
+AUDIO_TMP = "/dev/shm/live_audio.aac"
 
 def lock_memory():
     try:
@@ -31,26 +32,34 @@ buffer_lock = threading.Lock()
 
 os.makedirs(SSD_PATH, exist_ok=True)
 
+audio_proc = subprocess.Popen([
+    "ffmpeg", "-y", "-f", "alsa", "-ac", "1", "-i", "default", 
+    "-c:a", "aac", "-b:a", "48k", AUDIO_TMP
+], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 def save_clip_worker(trigger_name, capture_class: CaptureClass): 
     ts = int(time.time()) 
-    tmp = f"/tmp/t_{ts}"
+    tmp = f"/dev/shm/t_{ts}"
     os.makedirs(tmp, exist_ok=True) 
 
     with buffer_lock:
         for i, f in enumerate(FRAME_BUFFER): 
             with open(f"{tmp}/{i:05d}.jpg", "wb") as j: 
                 j.write(f) 
-    if capture_class.isMotionSensor == True:
-        cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_mthn.mp4"
-        print(f"start: {capture_class.startTime} | end: {capture_class.endTime} | reason: {capture_class.trigger}")
-    elif capture_class.isDoorSensor == True:
-        cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_drsn.mp4"
-        print(f"start: {capture_class.startTime} | end: {capture_class.endTime} | reason: {capture_class.trigger}")
-    else: 
-        cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}.mp4"
-        print(f"start: {capture_class.startTime} | end: {capture_class.endTime} | reason: {capture_class.trigger}")
     
-    subprocess.run(cmd.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) 
+    suffix = "mthn" if capture_class.isMotionSensor else "drsn" if capture_class.isDoorSensor else ""
+    label = f"_{suffix}" if suffix else ""
+    out_path = f"{SSD_PATH}/{trigger_name}_{ts}{label}.mp4"
+
+    cmd = [
+        "ffmpeg", "-y", "-framerate", str(FPS), "-i", f"{tmp}/%05d.jpg",
+        "-i", AUDIO_TMP, "-c:v", "h264_v4l2m2m", "-b:v", "2M",
+        "-c:a", "copy", "-map", "0:v:0", "-map", "1:a:0", 
+        "-shortest", out_path
+    ]
+    
+    print(f"start: {capture_class.startTime} | end: {capture_class.endTime} | reason: {capture_class.trigger}")
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) 
     shutil.rmtree(tmp) 
 
 def clipRecorder(l):
@@ -91,4 +100,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     finally:
+        audio_proc.terminate()
         shm.close()
