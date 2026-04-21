@@ -7,24 +7,24 @@ from multiprocessing import shared_memory
 from sensor_helper import *
 import sys
 
-W, H = 1920, 1080
+W, H = 640, 480
 SHM_NAME = "iris_live_frame"
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
-
 try:
     shm = shared_memory.SharedMemory(name=SHM_NAME)
     shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
 except FileNotFoundError:
     raise OSError("Camera not plugged in, OR main.py & startCamera.py aren't running")
 
-SENSITIVITY = 0.10
+SENSITIVITY = 0.15
 LUM_THRESH = 90     
 ALPHA = 0.05        
 
-global ADDRESS, AUTHKEY
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
+
+global persistence_count, last_centroid # keep the global here
 
 last_avg_lum = None
 persistence_count = 0
@@ -38,8 +38,7 @@ def calculate_entropy(roi):
 
 def tier1Actions(frame):
     global last_avg_lum
-    small = cv2.resize(frame, (320, 240))
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     curr = np.mean(gray)
     
     if last_avg_lum is None: 
@@ -50,7 +49,7 @@ def tier1Actions(frame):
     last_avg_lum = (ALPHA * curr) + ((1 - ALPHA) * last_avg_lum)
 
     mask = fgbg.apply(gray)
-    motion = (cv2.countNonZero(mask) / (320*240)) > SENSITIVITY
+    motion = (cv2.countNonZero(mask) / (640*480)) > SENSITIVITY
     
     return (triggered or motion), gray, mask
 
@@ -61,9 +60,10 @@ try:
     except:
         pass
 
-    while True:    
-        vis_frame = cv2.resize(shared_frame, (320, 240))
-        is_triggered, gray, mask = tier1Actions(vis_frame) 
+    while True:   
+        
+        vis = shared_frame.copy() # safety copy
+        is_triggered, gray, mask = tier1Actions(shared_frame) 
 
         if is_triggered:
             roi = gray[mask > 0] if np.any(mask) else np.array([])
@@ -78,33 +78,34 @@ try:
                  
                 if last_centroid:
                     dist = np.sqrt((current_centroid[0]-last_centroid[0])**2 + (current_centroid[1]-last_centroid[1])**2)
-                    if dist > 10: 
+                    if dist > 20: 
                         persistence_count += 1
                     else:
                         persistence_count = max(0, persistence_count - 1)
                         color = (0, 0, 255) 
                          
                 last_centroid = current_centroid
-                cv2.circle(vis_frame, current_centroid, 5, color, -1)
+                cv2.circle(vis, current_centroid, 10, color, -1)
 
                 if persistence_count >= 50: 
                     new_capture = CaptureClass(
-                        startTime=(datetime.now() - timedelta(seconds=5)).strftime("%H:%M:%S"), endTime=(datetime.now() + timedelta(seconds=5)).strftime("%H:%M:%S"),
+                        startTime=(datetime.now() - timedelta(seconds=5)).strftime("%H:%M:%S"), 
+                        endTime=(datetime.now() + timedelta(seconds=5)).strftime("%H:%M:%S"),
                         trigger=f"tiered_cap", duration=10.0, isMotionSensor=check_gpio(27), isDoorSensor=check_gpio(17))
                     try:
                         with Client(ADDRESS, authkey=AUTHKEY) as conn:
                             conn.send(new_capture)
+                        persistence_count = 0 # reset perst ct
                     except:
-                        pass
+                        raise ConnectionRefusedError("The sending of CaptureClass failed")
         else:
             if last_centroid:
-                cv2.circle(vis_frame, last_centroid, 5, (0, 0, 255), -1) 
+                cv2.circle(vis, last_centroid, 10, (0, 0, 255), -1) 
             last_centroid = None
             persistence_count = 0 
          
-        cv2.imshow("Centroid Tracker", vis_frame)
+        cv2.imshow("Two-tiered detection", vis)
         if cv2.waitKey(1) & 0xFF == ord('x'): break
-
 finally:
     try:
         close_gpio(17)
