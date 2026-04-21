@@ -56,7 +56,6 @@ int main()
             }
         }
 
-        // 🔥 IMPORTANT: don't hammer CPU
         std::this_thread::sleep_for(std::chrono::seconds(3));
     }
 

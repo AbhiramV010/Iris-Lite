@@ -2,23 +2,38 @@
 #include <algorithm>
 #include <cmath>
 
+// ---------------- KEEP PROBABILITY ----------------
+// stable nonlinear mapping 
 float CompressionPolicy::computeKeepProbability(float importance, uint64_t)
 {
-    // prevent instability
     importance = std::clamp(importance, 0.0f, 1.0f);
 
-    // nonlinear boost for high-importance frames
-    float p = importance * importance;
+    // mild sharpening (prevents flat response)
+    float p = std::tanh(2.5f * importance);
 
     return std::clamp(p, 0.0f, 1.0f);
 }
 
-float CompressionPolicy::computeCompressionStrength(float globalImportance)
+// ----------------  DYNAMIC CRF ----------------
+int CompressionPolicy::computeDynamicCRF(float importance, int baseCRF)
 {
-    globalImportance = std::clamp(globalImportance, 0.0f, 1.0f);
+    importance = std::clamp(importance, 0.0f, 1.0f);
 
-    // inverse relationship
-    float strength = 1.0f - globalImportance;
+    // map importance → quality shift
+    // high importance = lower CRF (better quality)
+    // low importance  = higher CRF (more compression)
 
-    return std::clamp(strength, 0.1f, 1.0f);
+    float qualityBias = (1.0f - importance) * 10.0f; // range ~0–10
+
+    int crf = static_cast<int>(baseCRF + qualityBias);
+
+    return std::clamp(crf, 16, 35);
+}
+
+// ---------------- COMPRESSION STRENGTH ----------------
+float CompressionPolicy::computeCompressionStrength(float importance)
+{
+    importance = std::clamp(importance, 0.0f, 1.0f);
+
+    return 1.0f - importance;
 }

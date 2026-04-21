@@ -19,7 +19,6 @@ struct Config
 
     int crf;
 
-    std::vector<cv::Rect> privacyZones;
 };
 
 bool loadConfig(Config& cfg, const std::string& path);

@@ -18,8 +18,6 @@ H264Encoder::~H264Encoder()
     close();
 }
 
-// ---------------- OPEN ----------------
-
 bool H264Encoder::open(const std::string& outputPath)
 {
     ffmpegCommand = buildCommand(outputPath);
@@ -42,25 +40,17 @@ bool H264Encoder::open(const std::string& outputPath)
     return true;
 }
 
-// ---------------- WRITE FRAME ----------------
-
 bool H264Encoder::writeFrame(const cv::Mat& frame)
 {
     if (!ffmpegPipe || frame.empty())
         return false;
 
-    if (!ffmpegPipe)
-    {
-        logError("FFmpeg pipe is null (encoder not running)");
-        return false;
-    }
-
     size_t bytes = frame.total() * frame.elemSize();
-    size_t written = fwrite(frame.data, 1, bytes, ffmpegPipe);
+    size_t writtenBytes = fwrite(frame.data, 1, bytes, ffmpegPipe);
 
-    if (written != bytes)
+    if (writtenBytes != bytes)
     {
-        logError("FFmpeg write failed (partial write)");
+        logError("FFmpeg write failed");
 
 #ifdef _WIN32
         _pclose(ffmpegPipe);
@@ -74,8 +64,6 @@ bool H264Encoder::writeFrame(const cv::Mat& frame)
 
     return true;
 }
-
-// ---------------- CLOSE ----------------
 
 void H264Encoder::close()
 {
@@ -92,8 +80,6 @@ void H264Encoder::close()
     logInfo("Encoder closed");
 }
 
-// ---------------- COMMAND BUILD ----------------
-
 std::string H264Encoder::buildCommand(const std::string& outputPath)
 {
     std::ostringstream cmd;
@@ -104,33 +90,25 @@ std::string H264Encoder::buildCommand(const std::string& outputPath)
         << "-r " << fps << " "
         << "-i - ";
 
-    // -------- SAFE PLATFORM ENCODER SELECTION --------
 #if defined(_WIN32)
 
-    if (useHardware)
-    {
-        // Intel QuickSync fallback for Windows
-        cmd << "-c:v h264_qsv ";
-    }
-    else
-    {
-        cmd << "-c:v libx264 -preset veryfast -crf 26 ";
-    }
+    cmd << "-c:v libx264 -preset veryfast -crf " << bitrate;
 
 #else
 
     if (useHardware)
-    {
         cmd << "-c:v h264_v4l2m2m ";
-    }
     else
-    {
-        cmd << "-c:v libx264 -preset veryfast -crf 26 ";
-    }
+        cmd << "-c:v libx264 -preset veryfast -crf " << bitrate;
 
 #endif
 
-    cmd << "-pix_fmt yuv420p \"" << outputPath << "\"";
+    cmd << " -pix_fmt yuv420p \"" << outputPath << "\"";
 
     return cmd.str();
+}
+
+void H264Encoder::setCRF(int newCRF)
+{
+    bitrate = newCRF;
 }

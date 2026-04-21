@@ -12,12 +12,9 @@
 
 #include "Config.hpp"
 #include "ImportanceEngine.hpp"
-#include "ImportanceMap.hpp"
 #include "ImportanceResult.hpp"
 #include "CompressionPolicy.hpp"
-#include "AdaptiveEncoderController.hpp"
 #include "H264encoder.hpp"
-#include "TriggerEngine.hpp"
 class CompressionEngine
 {
     
@@ -31,7 +28,7 @@ public:
     void pushFrame(const cv::Mat& frame, uint64_t idx);
 
 public:
-    // 🔧 CORE PIPELINE
+    //  CORE PIPELINE
     void processVideoFile(const std::string& path);
     struct FastPathState
     {
@@ -45,10 +42,8 @@ private:
     std::atomic<bool> running{ false };
 
     std::unique_ptr<ImportanceEngine> importanceEngine;
-    std::unique_ptr<ImportanceMap> importanceMap;
     std::unique_ptr<CompressionPolicy> policy;
-    std::unique_ptr<AdaptiveEncoderController> controller;
     std::unique_ptr<H264Encoder> encoder;
-    std::unique_ptr<TriggerEngine> triggerEngine;
-
+    float importanceState = 0.5f;
+    float importanceMomentum = 0.5f;
 };

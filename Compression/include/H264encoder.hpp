@@ -9,13 +9,15 @@ class H264Encoder
 public:
     H264Encoder(int width, int height, int fps, int bitrate, bool useHardware);
     ~H264Encoder();
-
+ 
     bool open(const std::string& outputPath);
     bool writeFrame(const cv::Mat& frame);
     void close();
 
     bool isOpen() const { return ffmpegPipe != nullptr; }
 
+public:
+    void setCRF(int newCRF);
 private:
     int width;
     int height;

@@ -19,6 +19,9 @@ ImportanceEngine::~ImportanceEngine() {}
 
 ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& prev)
 {
+    cv::Mat prevSafe = prev;
+    if (prevSafe.empty())
+        prevSafe = frame;
     ImportanceSignal r;
 
     if (frame.empty())
@@ -29,7 +32,7 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
     cv::cvtColor(resized, gray, cv::COLOR_BGR2GRAY);
 
     // ---------------- MOTION ----------------
-    if (cfg.useMotion && !prev.empty())
+    if(cfg.useMotion)
     {
         cv::Mat prevResized, prevGray;
         cv::resize(prev, prevResized, cv::Size(w, h));
@@ -37,6 +40,8 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
 
         cv::Mat diff;
         cv::absdiff(gray, prevGray, diff);
+
+
 
         r.motion = static_cast<float>(cv::mean(diff)[0]) / 255.0f;
     }
@@ -64,10 +69,8 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
     }
 
     // ---------------- GLOBAL ----------------
-    r.global =
-        0.5f * r.motion +
-        0.4f * r.edges +
-        0.1f * r.faces;
-
+    r.global = (r.motion * 0.5f) +
+        (r.edges * 0.4f) +
+        (r.faces * 0.1f);
     return r;
 }

@@ -4,8 +4,12 @@
 class CompressionPolicy
 {
 public:
-    float computeKeepProbability(float globalImportance,
-        uint64_t frameIndex);
+    // Probability of keeping a frame
+    float computeKeepProbability(float importance, uint64_t frameIndex);
 
-    float computeCompressionStrength(float globalImportance);
+    // NEW: dynamic CRF adjustment (core upgrade)
+    int computeDynamicCRF(float importance, int baseCRF);
+
+    // Optional: compression pressure signal (kept for explainability)
+    float computeCompressionStrength(float importance);
 };

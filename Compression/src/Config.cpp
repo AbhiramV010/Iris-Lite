@@ -41,25 +41,6 @@ bool loadConfig(Config& cfg, const std::string& path)
     cfg.fps = j.value("fps", 24);
     cfg.crf = j.value("crf", 22);
 
-    // Load privacy zones
-    if (j.contains("privacy_zones") && j["privacy_zones"].is_array())
-    {
-        for (const auto& z : j["privacy_zones"])
-        {
-            int x = z.value("x", 0);
-            int y = z.value("y", 0);
-            int w = z.value("w", 0);
-            int h = z.value("h", 0);
-
-            cfg.privacyZones.emplace_back(x, y, w, h);
-        }
-
-        logInfo("Loaded " + std::to_string(cfg.privacyZones.size()) + " privacy zones");
-    }
-    else
-    {
-        logInfo("No privacy zones defined");
-    }
 
     logInfo("Config loaded successfully from " + path);
     return true;
