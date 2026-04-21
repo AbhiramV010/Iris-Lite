@@ -12,14 +12,12 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
 
-struct SharedEventBuffer
-{
+struct SharedEventBuffer {
     uint64_t startFrame;
     uint64_t endFrame;
 };
 
-int main()
-{
+int main() {
     logInfo("IRIS-Lite Compression Engine starting");
 
     Config cfg;
@@ -38,7 +36,6 @@ int main()
         return -1;
     }
 
-    // ---------------- OPEN SHM ONCE ----------------
     const char* shm_name = "/iris_frame_indices";
 
     int fd = shm_open(shm_name, O_RDONLY, 0666);
@@ -73,9 +70,7 @@ int main()
             if (END_IDX > START_IDX) {
                 engine.processVideoClip(file, START_IDX, END_IDX);
             }
-            else {
-                engine.processVideoFile(file);
-            }
+            else throw std::invalid_argument("")// throw an error, why are we handling this? it needs to be an issue if END < START
             moveFile(file, cfg.processedFolder + "/" + getFilename(file));
         }
         std::this_thread::sleep_for(std::chrono::seconds(3));
@@ -95,8 +90,7 @@ int main()
         }
 
         // Move processed file
-        std::string filename =
-            file.substr(file.find_last_of("/\\") + 1);
+        std::string filename = file.substr(file.find_last_of("/\\") + 1);
 
         std::string dst = processedFolder + "/" + filename;
 
