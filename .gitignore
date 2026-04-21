@@ -5,3 +5,4 @@ sample.*
 bench.*
 test.*
 training_data/
+.vs/
