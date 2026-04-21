@@ -1,58 +1,71 @@
 import cv2
 import numpy as np
 from multiprocessing.connection import Listener
+from multiprocessing import shared_memory
 import threading
 from captureinfo import CaptureClass
 from collections import deque
 import time
 import os
 import subprocess
-import shutil
 import ctypes
 import warnings
 import sys
 
-SSD_PATH = "clipDrive/clips" 
+SSD_PATH = "/mnt/clipDrive/clips"
 BUFFER_MINUTES = 5 
 FPS = 24  
 FRAME_BUFFER = deque(maxlen=FPS * 60 * BUFFER_MINUTES) 
 MCL_CURRENT = 1
 MCL_FUTURE = 2
-
-# History for reactive mask
-ZONE_HISTORY = deque(maxlen=5)
-# Privacy zone relative to 1080p: Bottom-right 600x450
-ZONE_X, ZONE_Y, ZONE_W, ZONE_H = 1320, 630, 600, 450
+SHM_NAME = "iris_live_frame"
+AUDIO_TMP = "/dev/shm/live_audio.aac"
 
 def lock_memory():
     try:
         ctypes.CDLL("libc.so.6").mlockall(MCL_CURRENT | MCL_FUTURE)
     except Exception as e:
-        warnings.warn("Memory-locking failed. Unexpected things could happen.", RuntimeWarning)
+        warnings.warn("Failed to lock memory.", RuntimeWarning)
 
 buffer_lock = threading.Lock()
 
 os.makedirs(SSD_PATH, exist_ok=True)
 
+audio_proc = subprocess.Popen([
+    "ffmpeg", "-y", "-f", "alsa", "-ac", "1", "-i", "hw:0,0,dsnoop",
+    "-c:a", "aac", "-b:a", "48k", AUDIO_TMP
+], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 def save_clip_worker(trigger_name, capture_class: CaptureClass): 
+    os.nice(10)
     ts = int(time.time()) 
-    tmp = f"/tmp/t_{ts}"
-    os.makedirs(tmp, exist_ok=True) 
-
-    with buffer_lock:
-        for i, f in enumerate(FRAME_BUFFER): 
-            with open(f"{tmp}/{i:05d}.jpg", "wb") as j: 
-                j.write(f) 
-
-    if capture_class.isMotionSensor == True:
-        cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_mthn.mp4"
-    elif capture_class.isDoorSensor == True:
-        cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}_drsn.mp4"
-    else: 
-        cmd = f"ffmpeg -y -framerate {FPS} -i {tmp}/%05d.jpg -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p {SSD_PATH}/{trigger_name}_{ts}.mp4" 
+    raw_tmp = f"/dev/shm/t_{ts}.raw"
     
-    subprocess.run(cmd.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) 
-    shutil.rmtree(tmp) 
+    with buffer_lock:
+        frames = list(FRAME_BUFFER)
+
+    if not frames:
+        return
+
+    with open(raw_tmp, "wb") as f:
+        for comp_frame in frames:
+            raw_frame = cv2.imdecode(comp_frame, cv2.IMREAD_COLOR)
+            if raw_frame is not None:
+                f.write(raw_frame.tobytes())
+
+    suffix = "mthn" if capture_class.isMotionSensor else "drsn" if capture_class.isDoorSensor else ""
+    label = f"_{suffix}" if suffix else ""
+    out_path = f"{SSD_PATH}/{trigger_name}_{ts}{label}.mp4"
+
+    cmd = ["ffmpeg", "-y",  "-f", "rawvideo", "-pixel_format", "bgr24", "-video_size", "1920x1080", "-framerate",
+           str(FPS), "-i", raw_tmp,"-i", AUDIO_TMP, "-c:v", "h264_v4l2m2m", "-b:v", "4M", "-c:a", "copy", "-map",
+            "0:v:0", "-map", "1:a:0", "-shortest", out_path
+    ]
+    
+    print(f"start: {capture_class.startTime} | end: {capture_class.endTime} | reason: {capture_class.trigger}")
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) 
+    if os.path.exists(raw_tmp):
+        os.remove(raw_tmp)
 
 def clipRecorder(l):
     while True:
@@ -64,31 +77,13 @@ def clipRecorder(l):
         except: continue
 
 if __name__ == "__main__":
-    cam = cv2.VideoCapture(0)
-    if not cam.isOpened():
-        cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
-    
-    if not cam.isOpened():
+    lock_memory()
+
+    try:
+        shm = shared_memory.SharedMemory(name=SHM_NAME)
+        stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
+    except FileNotFoundError:
         sys.exit(1)
-
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-    cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-    time.sleep(1.0)
-    
-    frame = None
-    for _ in range(10):
-        ret, frame = cam.read()
-        if ret and frame is not None:
-            break
-        time.sleep(0.1)
-
-    if frame is None:
-        cam.release()
-        sys.exit(1)
-
-    small_prev = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (480, 270))
 
     address = ('127.0.0.1', 8989)
     try:
@@ -96,44 +91,17 @@ if __name__ == "__main__":
         threading.Thread(target=clipRecorder, args=(l,), daemon=True).start()
 
         while True:
-            ret, frame = cam.read()
-            if not ret or frame is None: continue
-
-            # process the privacy zone
-            try:
-                roi = frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] 
-                roi_gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-
-                if len(ZONE_HISTORY) == 5:
-                    hist_avg = np.mean(list(ZONE_HISTORY), axis=0).astype(np.uint8)
-                    t_diff = cv2.absdiff(roi_gray, hist_avg)
-                    _, r_mask = cv2.threshold(t_diff, 25, 255, cv2.THRESH_BINARY)
-                    r_mask = cv2.dilate(r_mask, np.ones((3,3), np.uint8), iterations=1)
-                    
-                    abstract_roi = cv2.bitwise_and(roi, roi, mask=r_mask)
-                    frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] = 0
-                    frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] = abstract_roi
-                else:
-                    frame[ZONE_Y:ZONE_Y+ZONE_H, ZONE_X:ZONE_X+ZONE_W] = 0
-
-                ZONE_HISTORY.append(roi_gray)
-            except:
-                pass
-
-            # making the privacy zone
-            small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (480, 270))
-            diff = cv2.absdiff(small_prev, small_gray)
-            _, motion_mask = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
-            motion_mask = cv2.dilate(motion_mask, np.ones((3,3), np.uint8), iterations=1)
-            small_prev = small_gray
-
-            _, encoded_frame = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 40])
+            t_start = time.time()
+            frame = stream_view.copy()
             with buffer_lock:
-                FRAME_BUFFER.append(encoded_frame)
+                _, compressed_frame = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 25]) # compress the frame 
+                FRAME_BUFFER.append(compressed_frame)
 
-            cv2.imshow('irisLiteCam', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'): break
+            elapsed = time.time() - t_start
+            time.sleep(max(1/FPS - elapsed, 0.001))
 
+    except KeyboardInterrupt:
+        pass
     finally:
-        cam.release()
-        cv2.destroyAllWindows()
+        audio_proc.terminate()
+        shm.close()

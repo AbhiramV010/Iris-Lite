@@ -1,6 +1,7 @@
 # This is not intended for execution.
 # Previously, the system as a whole would refuse to run if it's on windows (annoying for devs)
 # This ensures that gpio functionality is disabled as a whole if the operating system is not Linux
+    # memory locking is very finicky on Windows, so just test on Linux
 import time
 import platform
 
@@ -22,12 +23,13 @@ if (platform.system() == "Linux"):
 
     def check_gpio(pin):
         gpio.setmode(gpio.BCM)
-        gpio.setup(pin, gpio.IN, pull_up_down=gpio.PUD_UP)
+        try: gpio.setup(pin, gpio.IN, pull_up_down=gpio.PUD_UP)
+        except: pass
         
         try:
             gpio.add_event_detect(pin, gpio.FALLING, callback=update_time, bouncetime=200)
         except RuntimeError:
-            pass 
+            return False 
         
         return (time.time() - last_trigger) < 10
 else: 

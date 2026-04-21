@@ -31,9 +31,9 @@ Iris_Lite is a lightweight camera system built on the Raspberry Pi 4B. It featur
 
 ```
 Iris-Lite/
-├── Compression/       # Core compression algorithm (C++)
-├── clips/             # Stored video/image clips
-├── IRIS_Lite.sh       # Main run script
+├── Compression/       # Core compression algorithm (C++ 17)
+├── clips/             # Scripts in charge of taking clips (Python 3.12.7)
+├── IRIS_Lite.sh       # Main run script (bash, **NOT** zsh)
 └── README.md
 ```
 

@@ -8,7 +8,9 @@ import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 from sensor_helper import *
+import warnings
 
+warnings.simplefilter('ignore', Warning) 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
 SOC = [2, 3, 4, 5, 6, 7] 
 
@@ -17,7 +19,7 @@ RATE = 16000
 CHUNK = 4096 
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
-THRESHOLD = 0.08 # a Root Mean Square value that acts as a threshold (in decibels, 0.1 RMS relative to 1.0 RMS is -22 dB SPLt)
+THRESHOLD = 0.08 
 
 interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
@@ -25,8 +27,20 @@ input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
 p = pyaudio.PyAudio()
-stream = p.open(format=pyaudio.paFloat32, channels=1, rate=RATE,
-                input=True, frames_per_buffer=CHUNK)
+device_index = None
+
+for i in range(p.get_device_count()):
+    dev_info = p.get_device_info_by_index(i)
+    if "default" in dev_info['name'] or "dsnoop" in dev_info['name']:
+        device_index = i
+        break
+
+stream = p.open(format=pyaudio.paFloat32, 
+                channels=1, 
+                rate=RATE,
+                input=True, 
+                input_device_index=device_index,
+                frames_per_buffer=CHUNK)
 
 audio_buffer = collections.deque(maxlen=RATE * 3)
 
