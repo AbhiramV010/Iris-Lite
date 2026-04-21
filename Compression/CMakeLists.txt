@@ -21,9 +21,10 @@ add_executable(PerceptualCompressor
     
     src/ImportanceEngine.cpp
     src/CompressionPolicy.cpp
+    src/FrameWindowBuffer.cpp 
+     
     
-    
-  "src/FrameWindowBuffer.cpp" "src/EventAligner.cpp" "src/EventMemory.cpp")
+    src/EventMemory.cpp "src/SharedFrameBuffer.cpp" "src/SnapshotExtractor.cpp")
 
 target_include_directories(PerceptualCompressor PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -32,6 +33,8 @@ target_include_directories(PerceptualCompressor PRIVATE
 
 target_link_libraries(PerceptualCompressor PRIVATE
     ${OpenCV_LIBS}
+    pthread
+    rt
 )
 
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
