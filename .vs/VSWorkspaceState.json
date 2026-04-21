@@ -1,8 +1,9 @@
 {
   "ExpandedNodes": [
     "",
-    "\\clips"
+    "\\clips",
+    "\\Compression",
+    "\\Compression\\src"
   ],
-  "SelectedNode": "\\clips\\detector_pipeline.py",
   "PreviewInSolutionExplorer": false
 }
