@@ -1,24 +1,27 @@
 #pragma once
 #include <string>
-#include <vector>
-#include <opencv2/core.hpp>
 
 struct Config
 {
     std::string mode;
 
-    int encodeWidth;
-    int encodeHeight;
-    int fps;
-    int perceptualWidth;
-    int perceptualHeight;
+    int encodeWidth = 1280;
+    int encodeHeight = 720;
 
-    bool useFaces;
-    bool useMotion;
-    bool useEdges;
+    int fps = 24;
 
-    int crf;
+    int perceptualWidth = 320;
+    int perceptualHeight = 180;
 
+    bool useFaces = true;
+    bool useMotion = true;
+    bool useEdges = true;
+
+    int crf = 28;
+
+    // event system
+    int bufferSize = 300;
+    float estimatedLatency = 3.0f;
 };
 
 bool loadConfig(Config& cfg, const std::string& path);

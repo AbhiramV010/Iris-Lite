@@ -4,12 +4,20 @@
 class CompressionPolicy
 {
 public:
-    // Probability of keeping a frame
-    float computeKeepProbability(float importance, uint64_t frameIndex);
+    // Frame-level decision (keep or drop)
+    bool shouldKeepFrame(float importance,
+        float momentum,
+        uint64_t frameIndex);
 
-    // NEW: dynamic CRF adjustment (core upgrade)
-    int computeDynamicCRF(float importance, int baseCRF);
+    // Segment-level quality control
+    int computeCRF(float importance,
+        float momentum,
+        int baseCRF);
 
-    // Optional: compression pressure signal (kept for explainability)
+    // Compression intensity signal (debug/analysis)
     float computeCompressionStrength(float importance);
-};
+
+    // Soft transition detector (NOT event detection)
+    // Used to bias compression smoothness, not trigger logic
+    float computeTemporalBias(uint64_t frameIndex);
+}; 

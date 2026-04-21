@@ -23,7 +23,7 @@ add_executable(PerceptualCompressor
     src/CompressionPolicy.cpp
     
     
-  "src/FrameWindowBuffer.cpp" "src/EventAligner.cpp")
+  "src/FrameWindowBuffer.cpp" "src/EventAligner.cpp" "src/EventMemory.cpp")
 
 target_include_directories(PerceptualCompressor PRIVATE
     ${CMAKE_SOURCE_DIR}/include

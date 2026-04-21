@@ -5,6 +5,8 @@
 #include <opencv2/opencv.hpp>
 #include <algorithm>
 
+// ---------------- CONSTRUCTOR ----------------
+
 CompressionEngine::CompressionEngine(const Config& cfg_)
     : cfg(cfg_)
 {
@@ -19,7 +21,7 @@ CompressionEngine::~CompressionEngine()
 
 bool CompressionEngine::initialize()
 {
-    logInfo("IRIS-Lite Compression Engine initializing (Pi-optimized mode)");
+    logInfo("IRIS-Lite Event-Driven Compression Engine initializing");
 
     importanceEngine = std::make_unique<ImportanceEngine>(
         cfg.perceptualWidth,
@@ -33,17 +35,108 @@ bool CompressionEngine::initialize()
         cfg.encodeWidth,
         cfg.encodeHeight,
         cfg.fps,
-        cfg.crf,
         true
     );
 
-    running = true;
+    aligner = std::make_unique<EventAligner>();
 
-    logInfo("Engine initialized (stable perceptual pipeline)");
+    buffer = std::make_unique<FrameWindowBuffer>(cfg.bufferSize);
+
+    running = true;
     return true;
 }
 
-// ---------------- PROCESS VIDEO ----------------
+// ---------------- BUFFER MANAGEMENT ----------------
+
+void CompressionEngine::clearBuffer()
+{
+    buffer->clear();
+}
+
+void CompressionEngine::pushFrame(const FramePacket& packet)
+{
+    std::vector<uint8_t> dummyJpeg; // placeholder bridge
+
+    buffer->pushFrame(packet.frameIndex, dummyJpeg);
+}
+
+// ---------------- SEGMENT CONTROL ----------------
+
+void CompressionEngine::startNewSegment(int crf)
+{
+    if (encoder && encoder->isOpen())
+        encoder->close();
+
+    std::string filename =
+        "output_" + std::to_string(segmentIndex++) + ".mp4";
+
+    if (!encoder->open(filename, crf))
+    {
+        logError("Failed to open encoder segment");
+        running = false;
+    }
+
+    currentCRF = crf;
+}
+
+// ---------------- WINDOW PROCESSING ----------------
+
+void CompressionEngine::processWindow(uint64_t startFrame, uint64_t endFrame)
+{
+    if (!buffer)
+        return;
+
+    if (startFrame > endFrame)
+        return;
+
+    logInfo("Processing event window");
+
+    auto frames = buffer->getFrameRange(startFrame, endFrame);
+
+    for (size_t i = 0; i < frames.size(); i++)
+    {
+        const cv::Mat& frame = frames[i];
+
+        ImportanceSignal signal = importanceEngine->analyze(
+            frame,
+            (i > 0) ? frames[i - 1] : frame
+        );
+
+        float importance =
+            0.5f * signal.motion +
+            0.3f * signal.edges +
+            0.2f * signal.faces;
+
+        importanceState = 0.9f * importanceState + 0.1f * importance;
+        importanceState = std::clamp(importanceState, 0.0f, 1.0f);
+
+        momentum = 0.85f * momentum + 0.15f * importanceState;
+        momentum = std::clamp(momentum, 0.0f, 1.0f);
+
+        int crf = policy->computeCRF(
+            importanceState,
+            momentum,
+            cfg.crf
+        );
+
+        if (currentCRF == -1 || std::abs(crf - currentCRF) >= 3)
+        {
+            startNewSegment(crf);
+        }
+
+        if (encoder && encoder->isOpen())
+        {
+            if (!encoder->writeFrame(frame))
+            {
+                logError("Encoding failure in event window");
+                running = false;
+                return;
+            }
+        }
+    }
+}
+
+// ---------------- MAIN PIPELINE ----------------
 
 void CompressionEngine::processVideoFile(const std::string& path)
 {
@@ -55,90 +148,54 @@ void CompressionEngine::processVideoFile(const std::string& path)
         return;
     }
 
-    if (!encoder->open("output.mp4"))
-    {
-        logError("Failed to open encoder output");
-        return;
-    }
-
     cv::Mat frame;
-    cv::Mat prevFrame;
-
     uint64_t idx = 0;
-    uint64_t written = 0;
 
-    // ---------------- TEMPORAL STATE ----------------
-    float importanceState = 0.5f;   // global perceptual memory
-    float momentum = 0.5f;          // stabilizer (prevents flicker)
+    clearBuffer();
 
-    while (cap.read(frame))
+    while (cap.read(frame) && running)
     {
         if (frame.empty())
+        {
+            idx++;
             continue;
-
-        // ---------------- IMPORTANCE ANALYSIS ----------------
-        ImportanceSignal signal;
-
-        if (prevFrame.empty())
-        {
-            signal = importanceEngine->analyze(frame, frame);
-        }
-        else
-        {
-            signal = importanceEngine->analyze(frame, prevFrame);
         }
 
-        // ---------------- GLOBAL IMPORTANCE FUSION ----------------
-        float instantImportance =
-            0.5f * signal.motion +
-            0.3f * signal.edges +
-            0.2f * signal.faces;
+        FramePacket pkt;
+        pkt.frame = frame.clone();
+        pkt.frameIndex = idx;
 
-        // ---------------- TEMPORAL SMOOTHING ----------------
-        importanceState =
-            0.90f * importanceState +
-            0.10f * instantImportance;
+        pushFrame(pkt);
 
-        importanceState = std::clamp(importanceState, 0.0f, 1.0f);
+        bool eventTriggered = policy->shouldKeepFrame(
+            importanceState,
+            momentum,
+            idx
+        );
 
-        // ---------------- MOMENTUM FILTER ----------------
-        momentum =
-            0.85f * momentum +
-            0.15f * importanceState;
-
-        momentum = std::clamp(momentum, 0.0f, 1.0f);
-
-        // ---------------- POLICY ----------------
-        float keepProb = policy->computeKeepProbability(momentum, idx);
-        float compression = policy->computeCompressionStrength(momentum);
-
-        // adaptive decision boundary
-        float threshold = 0.45f + (compression * 0.25f);
-
-        bool keepFrame = (keepProb > threshold);
-
-        // ---------------- ENCODING ----------------
-        if (keepFrame)
+        if (!eventTriggered)
         {
-            if (!encoder->writeFrame(frame))
-            {
-                logError("Encoder write failure — stopping stream");
-                break;
-            }
-
-            written++;
+            idx++;
+            continue;
         }
 
-        // ---------------- UPDATE STATE ----------------
-        prevFrame = frame;
+        auto window = aligner->align(
+            idx,
+            idx,
+            cfg.bufferSize,
+            cfg.estimatedLatency
+        );
+
+        processWindow(window.startFrame, window.endFrame);
+
         idx++;
     }
 
-    encoder->close();
+    if (encoder)
+        encoder->close();
 
     logInfo("Processing complete");
     logInfo("Frames processed: " + std::to_string(idx));
-    logInfo("Frames written: " + std::to_string(written));
 }
 
 // ---------------- SHUTDOWN ----------------

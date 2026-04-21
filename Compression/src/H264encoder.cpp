@@ -2,13 +2,11 @@
 #include "logging.hpp"
 
 #include <sstream>
-#include <vector>
 
-H264Encoder::H264Encoder(int width_, int height_, int fps_, int bitrate_, bool useHardware_)
+H264Encoder::H264Encoder(int width_, int height_, int fps_, bool useHardware_)
     : width(width_),
     height(height_),
     fps(fps_),
-    bitrate(bitrate_),
     useHardware(useHardware_)
 {
 }
@@ -18,9 +16,13 @@ H264Encoder::~H264Encoder()
     close();
 }
 
-bool H264Encoder::open(const std::string& outputPath)
+// ---------------- OPEN ----------------
+
+bool H264Encoder::open(const std::string& outputPath, int crf)
 {
-    ffmpegCommand = buildCommand(outputPath);
+    currentCRF = crf;
+
+    ffmpegCommand = buildCommand(outputPath, crf);
 
     logInfo("FFmpeg command: " + ffmpegCommand);
 
@@ -36,34 +38,38 @@ bool H264Encoder::open(const std::string& outputPath)
         return false;
     }
 
-    logInfo("Encoder started: " + outputPath);
     return true;
 }
+
+// ---------------- WRITE FRAME ----------------
 
 bool H264Encoder::writeFrame(const cv::Mat& frame)
 {
     if (!ffmpegPipe || frame.empty())
         return false;
 
-    size_t bytes = frame.total() * frame.elemSize();
-    size_t writtenBytes = fwrite(frame.data, 1, bytes, ffmpegPipe);
+    // enforce format safety (VERY IMPORTANT for Pi stability)
+    cv::Mat bgrFrame;
 
-    if (writtenBytes != bytes)
+    if (frame.channels() == 3)
+        bgrFrame = frame;
+    else
+        cv::cvtColor(frame, bgrFrame, cv::COLOR_GRAY2BGR);
+
+    size_t bytes = bgrFrame.total() * bgrFrame.elemSize();
+    size_t written = fwrite(bgrFrame.data, 1, bytes, ffmpegPipe);
+
+    if (written != bytes)
     {
         logError("FFmpeg write failed");
-
-#ifdef _WIN32
-        _pclose(ffmpegPipe);
-#else
-        pclose(ffmpegPipe);
-#endif
-
-        ffmpegPipe = nullptr;
+        close();
         return false;
     }
 
     return true;
 }
+
+// ---------------- CLOSE ----------------
 
 void H264Encoder::close()
 {
@@ -80,7 +86,9 @@ void H264Encoder::close()
     logInfo("Encoder closed");
 }
 
-std::string H264Encoder::buildCommand(const std::string& outputPath)
+// ---------------- FFmpeg COMMAND ----------------
+
+std::string H264Encoder::buildCommand(const std::string& outputPath, int crf)
 {
     std::ostringstream cmd;
 
@@ -91,24 +99,15 @@ std::string H264Encoder::buildCommand(const std::string& outputPath)
         << "-i - ";
 
 #if defined(_WIN32)
-
-    cmd << "-c:v libx264 -preset veryfast -crf " << bitrate;
-
+    cmd << "-c:v libx264 -preset ultrafast -crf " << crf;
 #else
-
     if (useHardware)
         cmd << "-c:v h264_v4l2m2m ";
     else
-        cmd << "-c:v libx264 -preset veryfast -crf " << bitrate;
-
+        cmd << "-c:v libx264 -preset ultrafast -crf " << crf;
 #endif
 
     cmd << " -pix_fmt yuv420p \"" << outputPath << "\"";
 
     return cmd.str();
-}
-
-void H264Encoder::setCRF(int newCRF)
-{
-    bitrate = newCRF;
 }
