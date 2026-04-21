@@ -20,7 +20,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         pass
 
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     if not cap.isOpened():
         cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
     if not cap.isOpened():

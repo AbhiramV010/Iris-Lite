@@ -42,8 +42,7 @@ int main()
     const char* shm_name = "/iris_frame_indices";
 
     int fd = shm_open(shm_name, O_RDONLY, 0666);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         logError("Failed to open event shared memory");
         return -1;
     }
@@ -51,8 +50,7 @@ int main()
     void* ptr = mmap(nullptr, sizeof(SharedEventBuffer),
         PROT_READ, MAP_SHARED, fd, 0);
 
-    if (ptr == MAP_FAILED)
-    {
+    if (ptr == MAP_FAILED) {
         logError("mmap failed");
         close(fd);
         return -1;
@@ -65,30 +63,50 @@ int main()
     uint64_t lastStart = 0;
     uint64_t lastEnd = 0;
 
-    while (true)
-    {
-        uint64_t startFrame = shared->startFrame;
-        uint64_t endFrame = shared->endFrame;
+    // main.py func
+    while (true) {
+        uint64_t START_IDX = shared->startFrame;
+        uint64_t END_IDX = shared->endFrame;
 
-        // Only trigger on NEW event
-        if (endFrame > startFrame &&
-            (startFrame != lastStart || endFrame != lastEnd))
-        {
-            logInfo("Event: " +
-                std::to_string(startFrame) + " → " +
-                std::to_string(endFrame));
+        auto files = listVideoFiles(cfg.inputFolder);
+        for (const auto& file : files) {
+            if (END_IDX > START_IDX) {
+                engine.processVideoClip(file, START_IDX, END_IDX);
+            }
+            else {
+                engine.processVideoFile(file);
+            }
+            moveFile(file, cfg.processedFolder + "/" + getFilename(file));
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+    }
+    // end main.py func
 
-            engine.processEvent({
-                startFrame,
-                endFrame,
-                "python_trigger"
-                });
+    auto files = listVideoFiles(inputFolder);
 
-            lastStart = startFrame;
-            lastEnd = endFrame;
+    for (const auto& file : files) {
+        logInfo("Found file: " + file);
+
+        if (END_IDX > START_IDX) {
+            engine.processVideoClip(file, START_IDX, END_IDX);
+        }
+        else {
+            engine.processVideoFile(file);
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // Move processed file
+        std::string filename =
+            file.substr(file.find_last_of("/\\") + 1);
+
+        std::string dst = processedFolder + "/" + filename;
+
+        if (moveFile(file, dst))
+        {
+            logInfo("Moved to processed: " + filename);
+        }
+    }
+
+        std::this_thread::sleep_for(std::chrono::seconds(3));
     }
 
     // never reached realistically
