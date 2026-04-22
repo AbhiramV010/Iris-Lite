@@ -14,8 +14,8 @@ BUFFER_MINUTES = 5
 FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
 SLOT_SIZE = 80000
 SHM_NAME = "iris_live_frame"
-CONCERN_SHM = "iris_frame_indices"
-
+SHM_NAME_INDICE = "iris_indices"
+CONCERN_SHM = "iris_concern_indices"
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
 
@@ -50,8 +50,8 @@ if __name__ == "__main__":
         stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
     except FileNotFoundError: sys.exit(1)
 
-    shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", CONCERN_SHM]
-    sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16, 16]
+    shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", CONCERN_SHM, SHM_NAME_INDICE]
+    sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16, 16, FRAME_BUFFER_SIZE * 16]
     shms = []
 
     for name, size in zip(shm_names, sizes):
@@ -61,9 +61,11 @@ if __name__ == "__main__":
     frame_buffer = np.ndarray((FRAME_BUFFER_SIZE, SLOT_SIZE), dtype=np.uint8, buffer=shms[0].buf)
     frame_sizes = np.ndarray((FRAME_BUFFER_SIZE,), dtype=np.uint32, buffer=shms[1].buf)
     head_tail = np.ndarray((2,), dtype=np.uint64, buffer=shms[2].buf)
-    frame_indices = np.ndarray((2,), dtype=np.uint64, buffer=shms[3].buf)
+    concern_indices = np.ndarray((2,), dtype=np.uint64, buffer=shms[3].buf)
+    full_indices = np.ndarray((FRAME_BUFFER_SIZE, 2), dtype=np.uint64, buffer=shms[4].buf)
     
     head_tail[0] = head_tail[1] = 0
+    global_frame_count = 0
 
     while True:
         t_start = time.time()
@@ -76,8 +78,8 @@ if __name__ == "__main__":
                 end_ts = float(event.endTime)
                 curr_head = int(head_tail[0])
                 
-                frame_indices[0] = (curr_head - int((now - start_ts) * FPS)) % FRAME_BUFFER_SIZE
-                frame_indices[1] = (curr_head - int((now - end_ts) * FPS)) % FRAME_BUFFER_SIZE
+                concern_indices[0] = (curr_head - int((now - start_ts) * FPS)) % FRAME_BUFFER_SIZE
+                concern_indices[1] = (curr_head - int((now - end_ts) * FPS)) % FRAME_BUFFER_SIZE
             except: pass
 
         _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 25])
@@ -88,8 +90,13 @@ if __name__ == "__main__":
             head = int(head_tail[0])
             frame_buffer[head][:comp_len] = np.frombuffer(comp_bytes, dtype=np.uint8)
             frame_sizes[head] = comp_len
+            
+            full_indices[head] = [int(time.time()), global_frame_count]
+            
             head_tail[0] = (head + 1) % FRAME_BUFFER_SIZE
             if head_tail[0] == head_tail[1]:
                 head_tail[1] = (int(head_tail[1]) + 1) % FRAME_BUFFER_SIZE
+            
+            global_frame_count += 1
 
         time.sleep(max(1/FPS - (time.time() - t_start), 0.001))

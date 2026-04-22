@@ -18,7 +18,7 @@ struct SharedEventBuffer {
 };
 
 int main() {
-    logInfo("IRIS-Lite Compression Engine starting");
+    logInfo("Iris-Lite Compression Engine starting");
 
     Config cfg;
 
@@ -36,7 +36,8 @@ int main() {
         return -1;
     }
 
-    const char* shm_name = "/iris_frame_indices";
+    // Python multiprocessing.shared_memory name
+    const char* shm_name = "iris_concern_indices";
 
     int fd = shm_open(shm_name, O_RDONLY, 0666);
     if (fd < 0) {
@@ -57,26 +58,37 @@ int main() {
 
     logInfo("Listening for events...");
 
+    uint64_t lastStart = 0;
+    uint64_t lastEnd = 0;
+
     // main.py func
     while (true) {
         uint64_t START_IDX = shared->startFrame;
         uint64_t END_IDX = shared->endFrame;
         
-        std::cout << "START INDEX >> " << START_IDX << std::endl;
-        std::cout << "END INDEX >> " << END_IDX << std::endl;
+        if (START_IDX != lastStart || END_IDX != lastEnd) {
+            lastStart = START_IDX;
+            lastEnd = END_IDX;
 
-        auto files = listVideoFiles(cfg.inputFolder);
-        for (const auto& file : files) {
-            if (END_IDX > START_IDX) {
-                engine.processVideoClip(file, START_IDX, END_IDX);
+            // print out the start & end index values
+            std::cout << "START INDEX >> " << START_IDX << std::endl;
+            std::cout << "END INDEX >> " << END_IDX << std::endl;
+
+            auto files = listVideoFiles(cfg.inputFolder);
+            for (const auto& file : files) {
+                if (END_IDX > START_IDX) {
+                    engine.processVideoClip(file, START_IDX, END_IDX);
+                }
+                else {
+                    logError("Invalid indices: END_IDX must be greater than START_IDX");
+                    continue;
+                }
+                
+                moveFile(file, cfg.processedFolder + "/" + getFilename(file));
             }
-            else {
-                throw std::invalid_argument("END_IDX must be greater than START_IDX");
-            }
-            
-            moveFile(file, cfg.processedFolder + "/" + getFilename(file));
         }
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     // end main.py func
 
