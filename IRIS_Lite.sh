@@ -1,25 +1,35 @@
 #!/bin/bash
-echo Starting the Iris_Lite camera system.
 
-sleep 1
-uxterm -T "Camera Utility" -e "python3 ./clips/startCamera.py" & #
+draw_bar() { # simple yet cool loading bar!
+    local percent=$(( $1 * 100 / 6 ))
+    local filled=$(( $1 * 2 ))
+    local empty=$(( 12 - filled ))
+    printf "\rProgress: ["
+    printf "%${filled}s" | tr ' ' '█'
+    printf "%${empty}s" | tr ' ' '░'
+    printf "] %d%%" "$percent"
+}
 
-sleep 1
-uxterm -T "Main Utility" -e "python3 ./clips/main.py" & #
+echo "Starting Iris Lite"
+draw_bar 0
 
-sleep 1
-uxterm -T "Detector Pipeline" -e "python3 ./clips/detector_pipeline.py" & #
+uxterm -T "Camera Utility" -e "python3 ./clips/startCamera.py" & 
+sleep 1 && draw_bar 1
 
-sleep 1
-uxterm -T "Listener Tool" -e "python3 ./clips/listener.py" & #
+uxterm -T "Main Utility" -e "python3 ./clips/main.py" & 
+sleep 1 && draw_bar 2
 
-sleep 1
-uxterm -T "Zone Monitor" -e "python3 ./clips/zone_monitor.py" & #
+uxterm -T "Detector Pipeline" -e "python3 ./clips/detector_pipeline.py" & 
+sleep 1 && draw_bar 3
 
-sleep 1
+uxterm -T "Listener Tool" -e "python3 ./clips/listener.py" & 
+sleep 1 && draw_bar 4
+
+uxterm -T "Zone Monitor" -e "python3 ./clips/zone_monitor.py" & 
+sleep 1 && draw_bar 5
+
 uxterm -T "Compression System" -e "sh -c 'g++ ./Compression/src/main.cpp -o ./Compression/src/compressor && ./Compression/src/compressor; exec bash'" &
+sleep 1 && draw_bar 6
 
-sleep 1
+echo -e "\nAll systems started."
 top
-
-echo All systems started.
