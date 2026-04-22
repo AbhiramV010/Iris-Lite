@@ -26,6 +26,7 @@ if __name__ == "__main__":
     if not cap.isOpened():
         sys.exit(1)
 
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, W)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)

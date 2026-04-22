@@ -1,8 +1,9 @@
 {
   "ExpandedNodes": [
     "",
-    "\\Compression"
+    "\\Compression",
+    "\\Compression\\src"
   ],
-  "SelectedNode": "\\Compression\\CMakeLists.txt",
+  "SelectedNode": "\\Compression\\src\\main.cpp",
   "PreviewInSolutionExplorer": false
 }
