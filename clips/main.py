@@ -1,17 +1,36 @@
 import cv2
 import numpy as np
 from multiprocessing import shared_memory
+from multiprocessing.connection import Listener
 import threading
 import time
 import os
 import ctypes
 import sys
+from captureinfo import CaptureClass
 
 FPS = 24  
 BUFFER_MINUTES = 5 
 FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
 SLOT_SIZE = 80000
 SHM_NAME = "iris_live_frame"
+SHM_INDICES_NAME = "iris_frame_indices"
+
+ADDRESS = ('127.0.0.1', 8989)
+AUTHKEY = b'1000011'
+
+capture_queue = []
+
+def findEvents():
+    with Listener(ADDRESS, authkey=AUTHKEY) as listener:
+        while True:
+            try:
+                with listener.accept() as conn:
+                    obj = conn.recv()
+                    if isinstance(obj, CaptureClass):
+                        capture_queue.append(obj)
+            except Exception:
+                pass
 
 def lock_memory():
     try:
@@ -22,13 +41,17 @@ buffer_lock = threading.Lock()
 
 if __name__ == "__main__":
     lock_memory()
+    
+    event_thread = threading.Thread(target=findEvents, daemon=True)
+    event_thread.start()
+
     try:
         shm = shared_memory.SharedMemory(name=SHM_NAME)
         stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
     except FileNotFoundError: sys.exit(1)
 
-    shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail"]
-    sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16]
+    shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", SHM_INDICES_NAME]
+    sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16, 16]
     shms = []
 
     for name, size in zip(shm_names, sizes):
@@ -38,10 +61,25 @@ if __name__ == "__main__":
     frame_buffer = np.ndarray((FRAME_BUFFER_SIZE, SLOT_SIZE), dtype=np.uint8, buffer=shms[0].buf)
     frame_sizes = np.ndarray((FRAME_BUFFER_SIZE,), dtype=np.uint32, buffer=shms[1].buf)
     head_tail = np.ndarray((2,), dtype=np.uint64, buffer=shms[2].buf)
+    frame_indices = np.ndarray((2,), dtype=np.uint64, buffer=shms[3].buf)
+    
     head_tail[0] = head_tail[1] = 0
 
     while True:
         t_start = time.time()
+
+        if capture_queue:
+            event = capture_queue.pop(0)
+            now = time.time()
+            try:
+                start_ts = float(event.startTime)
+                end_ts = float(event.endTime)
+                curr_head = int(head_tail[0])
+                
+                frame_indices[0] = (curr_head - int((now - start_ts) * FPS)) % FRAME_BUFFER_SIZE
+                frame_indices[1] = (curr_head - int((now - end_ts) * FPS)) % FRAME_BUFFER_SIZE
+            except: pass
+
         _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 25])
         comp_bytes = compressed.tobytes()
         comp_len = len(comp_bytes)
