@@ -1,87 +1,135 @@
-import cv2
 import numpy as np
-from multiprocessing import shared_memory
-from multiprocessing.connection import Listener
-import threading
-import time
+import pyaudio
+import collections
+import ai_edge_litert.interpreter as litert
+import librosa
+from multiprocessing.connection import Client
 import os
-import ctypes
-import sys
-import struct
+from datetime import datetime, timedelta
+from captureinfo import CaptureClass
+from sensor_helper import *
+import warnings
 
-FPS = 24  
-BUFFER_MINUTES = 5 
-FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
-SLOT_SIZE = 80000
-SHM_NAME = "iris_live_frame"
-INDICE_SHM = "iris_frame_indices"
+warnings.simplefilter('ignore', Warning) 
+SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
+SOC = [2, 3, 4, 5, 6, 7] 
+
+MODEL = os.path.join(os.path.dirname(__file__), "sound_model.tflite")
+RATE = 16000 
+CHUNK = 4096 
 ADDRESS = ('127.0.0.1', 8989)
+AUTHKEY = b'1000011'
+THRESHOLD = 0.08 
 
-def lock_memory():
-    try:
-        ctypes.CDLL("libc.so.6").mlockall(1 | 2)
-    except Exception: pass
+interpreter = litert.Interpreter(model_path=MODEL)
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
-buffer_lock = threading.Lock()
+p = pyaudio.PyAudio()
+device_index = None
 
-if __name__ == "__main__":
-    serv = None
-    try:
-        serv = Listener(ADDRESS, authkey=b'1000011')
-        print(f"Listening on {ADDRESS}...")
-        CONN = serv.accept()
+for i in range(p.get_device_count()):
+    dev_info = p.get_device_info_by_index(i)
+    if "default" in dev_info['name'] or "dsnoop" in dev_info['name']:
+        device_index = i
+        break
+
+stream = p.open(format=pyaudio.paFloat32, 
+                channels=1, 
+                rate=RATE,
+                input=True, 
+                input_device_index=device_index,
+                frames_per_buffer=CHUNK)
+
+audio_buffer = collections.deque(maxlen=RATE * 3)
+
+def pre_process(audio_np):
+    audio_np = librosa.util.normalize(audio_np)
+    spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=128, hop_length=327)
+    log_spec = librosa.power_to_db(spec, ref=1.0)
+    log_spec = (log_spec - np.min(log_spec)) / (np.max(log_spec) - np.min(log_spec) + 1e-6)
+    
+    if log_spec.shape[1] > 98:
+        log_spec = log_spec[:, :98]
+    elif log_spec.shape[1] < 98:
+        log_spec = np.pad(log_spec, ((0, 0), (0, 98 - log_spec.shape[1])), mode='constant')
+    return log_spec
+
+active_detection = False
+detection_start_time = None
+current_label = None
+max_confidence = 0.0
+
+try:
+    try: 
+        start_up(17)
+        start_up(27)
+    except: pass
+    while True:
+        data = stream.read(CHUNK, exception_on_overflow=False)
+        chunk = np.frombuffer(data, dtype=np.float32)
         
-        lock_memory()
-        try:
-            shm = shared_memory.SharedMemory(name=SHM_NAME)
-            # 16 bytes, for two uint64 vars in c++
-            frame_indices = shared_memory.SharedMemory(name=INDICE_SHM, create=True, size=16) 
-            stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
-        except FileExistsError:
-            frame_indices = shared_memory.SharedMemory(name=INDICE_SHM)
-        except FileNotFoundError: 
-            sys.exit(1)
+        current_volume = np.sqrt(np.mean(chunk**2))
+        print(f"Volume: {current_volume:.5f} | Trigger: {current_volume > THRESHOLD}", end='\r')
+        
+        if current_volume > THRESHOLD:
+            audio_buffer.extend(chunk)
 
-        shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail"]
-        sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16]
-        shms = []
+            if len(audio_buffer) >= (RATE * 2):
+                audio_array = np.array(list(audio_buffer))
+                recent_audio = audio_array[-(RATE * 2):]
+                
+                processed_data = pre_process(recent_audio)
+                input_data = processed_data[np.newaxis, ..., np.newaxis].astype(np.float32)
+                
+                interpreter.set_tensor(input_details[0]['index'], input_data)
+                interpreter.invoke()
+                output_data = interpreter.get_tensor(output_details[0]['index'])
+                
+                prediction = np.argmax(output_data)
+                confidence = float(output_data[0][prediction])
 
-        for name, size in zip(shm_names, sizes):
-            try: shms.append(shared_memory.SharedMemory(name=name, create=True, size=size))
-            except FileExistsError: shms.append(shared_memory.SharedMemory(name=name))
+                if prediction in SOC and confidence > 0.6: 
+                    if not active_detection:
+                        active_detection = True
+                        detection_start_time = datetime.now()
+                        current_label = SOUND_LABELS.get(prediction)
+                        max_confidence = confidence
+                    else:
+                        max_confidence = max(max_confidence, confidence)
+                
+                elif active_detection:
+                    detection_end_time = datetime.now()
+                    buffered_start = detection_start_time - timedelta(seconds=5)
+                    buffered_end = detection_end_time + timedelta(seconds=5)
+                    total_duration = (buffered_end - buffered_start).total_seconds()
+                    
+                    new_capture = CaptureClass(
+                        startTime=buffered_start.strftime("%H:%M:%S"), 
+                        endTime=buffered_end.strftime("%H:%M:%S"),
+                        trigger=f"{current_label} ({max_confidence*100:.1f}%)",
+                        duration=round(total_duration, 2),
+                        isMotionSensor=check_gpio(27), 
+                        isDoorSensor=check_gpio(17)
+                    )
+                    print(f"\nCaptured: {new_capture.trigger}")
 
-        frame_buffer = np.ndarray((FRAME_BUFFER_SIZE, SLOT_SIZE), dtype=np.uint8, buffer=shms[0].buf)
-        frame_sizes = np.ndarray((FRAME_BUFFER_SIZE,), dtype=np.uint32, buffer=shms[1].buf)
-        head_tail = np.ndarray((2,), dtype=np.uint64, buffer=shms[2].buf)
-        head_tail[0] = head_tail[1] = 0
+                    try:
+                        with Client(ADDRESS, authkey=AUTHKEY) as conn:
+                            conn.send(new_capture)
+                    except:
+                        pass
+                    
+                    active_detection = False
+                    max_confidence = 0.0
 
-        ctr=0 # counter for frame indices, VERY important
-        while True:
-            t_start = time.time()
-
-            if CONN.poll():
-                try:
-                    msg = CONN.recv()
-                    if msg == "TRIGGER_SAVE":
-                        with buffer_lock:
-                            end_f = int(head_tail[0])
-                            start_f = int(head_tail[1])
-                            frame_indices.buf[:16] = struct.pack("QQ", start_f, end_f)
-                except EOFError: break
-
-            _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 25])
-            comp_bytes = compressed.tobytes()
-            comp_len = len(comp_bytes)
-            
-            if comp_len <= SLOT_SIZE:
-                with buffer_lock:
-                    head = int(head_tail[0])
-                    frame_buffer[head][:comp_len] = np.frombuffer(comp_bytes, dtype=np.uint8)
-                    frame_sizes[head] = comp_len
-                    head_tail[0] = (head + 1) % FRAME_BUFFER_SIZE
-                    if head_tail[0] == head_tail[1]:
-                        head_tail[1] = (int(head_tail[1]) + 1) % FRAME_BUFFER_SIZE
-
-            time.sleep(max(1/FPS - (time.time() - t_start), 0.001))
-    finally:
-        if serv: serv.close()
+except KeyboardInterrupt: 
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+finally:
+    try:
+        close_gpio(17)
+        close_gpio(27)
+    except: pass
