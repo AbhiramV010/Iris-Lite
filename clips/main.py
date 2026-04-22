@@ -15,10 +15,7 @@ P_X, P_Y = 0, H - P_H
 if __name__ == "__main__":
     prev_zone = None
     
-    try:
-        conn = Client(ADDRESS, authkey=b'1000011')
-    except ConnectionRefusedError:
-        sys.exit(1)
+    conn = Client(ADDRESS, authkey=b'1000011')
 
     try:
         old_shm = shared_memory.SharedMemory(name=SHM_NAME)
