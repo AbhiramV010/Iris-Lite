@@ -24,24 +24,16 @@ capture_queue = []
 def findEvents():
     with Listener(ADDRESS, authkey=AUTHKEY) as listener:
         while True:
-            try:
-                with listener.accept() as conn:
-                    obj = conn.recv()
-                    if isinstance(obj, CaptureClass):
+            with listener.accept() as conn:
+                obj = conn.recv()
+                if isinstance(obj, CaptureClass):
                         capture_queue.append(obj)
-            except Exception:
-                pass
-
-def lock_memory():
-    try:
-        ctypes.CDLL("libc.so.6").mlockall(1 | 2)
-    except Exception: pass
 
 buffer_lock = threading.Lock()
 
 if __name__ == "__main__":
-    lock_memory()
-    
+    ctypes.CDLL("libc.so.6").mlockall(1 | 2) 
+      
     event_thread = threading.Thread(target=findEvents, daemon=True)
     event_thread.start()
 
