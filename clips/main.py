@@ -14,7 +14,7 @@ BUFFER_MINUTES = 5
 FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
 SLOT_SIZE = 80000
 SHM_NAME = "iris_live_frame"
-SHM_INDICES_NAME = "iris_frame_indices"
+CONCERN_SHM = "iris_frame_indices"
 
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
     except FileNotFoundError: sys.exit(1)
 
-    shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", SHM_INDICES_NAME]
+    shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", CONCERN_SHM]
     sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16, 16]
     shms = []
 

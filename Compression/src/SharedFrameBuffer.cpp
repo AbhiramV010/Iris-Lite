@@ -10,8 +10,6 @@ static constexpr const char* SHM_DATA = "iris_frame_buffer_data";
 static constexpr const char* SHM_SIZES = "iris_frame_sizes";
 static constexpr const char* SHM_HEAD = "iris_frame_head_tail";
 
-
-
 bool SharedFrameBuffer::initialize()
 {
     bufferSize = FRAME_BUFFER_SIZE;

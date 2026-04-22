@@ -57,53 +57,29 @@ int main() {
 
     logInfo("Listening for events...");
 
-    uint64_t lastStart = 0;
-    uint64_t lastEnd = 0;
-
     // main.py func
     while (true) {
         uint64_t START_IDX = shared->startFrame;
         uint64_t END_IDX = shared->endFrame;
+        
+        std::cout << "START INDEX >> " << START_IDX << std::endl;
+        std::cout << "END INDEX >> " << END_IDX << std::endl;
 
         auto files = listVideoFiles(cfg.inputFolder);
         for (const auto& file : files) {
             if (END_IDX > START_IDX) {
                 engine.processVideoClip(file, START_IDX, END_IDX);
             }
-            else throw std::invalid_argument("")// throw an error, why are we handling this? it needs to be an issue if END < START
+            else {
+                throw std::invalid_argument("END_IDX must be greater than START_IDX");
+            }
+            
             moveFile(file, cfg.processedFolder + "/" + getFilename(file));
         }
         std::this_thread::sleep_for(std::chrono::seconds(3));
     }
     // end main.py func
 
-    auto files = listVideoFiles(inputFolder);
-
-    for (const auto& file : files) {
-        logInfo("Found file: " + file);
-
-        if (END_IDX > START_IDX) {
-            engine.processVideoClip(file, START_IDX, END_IDX);
-        }
-        else {
-            engine.processVideoFile(file);
-        }
-
-        // Move processed file
-        std::string filename = file.substr(file.find_last_of("/\\") + 1);
-
-        std::string dst = processedFolder + "/" + filename;
-
-        if (moveFile(file, dst))
-        {
-            logInfo("Moved to processed: " + filename);
-        }
-    }
-
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-    }
-
-    // never reached realistically
     munmap(ptr, sizeof(SharedEventBuffer));
     close(fd);
 
