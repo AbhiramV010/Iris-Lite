@@ -20,12 +20,12 @@ ADDRESS = ('127.0.0.1', 8989)
 buffer_lock = threading.Lock()
 print("started cam")
 
-if __name__ == "__main__":
+if __name__ == "__main__": # RUN THIS PROGRAM WITH SUDO ON LINUX
     try:
         ctypes.CDLL("libc.so.6").mlockall(1 | 2)
         print("memory locked")
     except Exception: pass
-    
+
     LISTENER = Listener(ADDRESS, authkey=b'1000011')
     CONN = LISTENER.accept()
 
