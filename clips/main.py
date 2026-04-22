@@ -2,10 +2,6 @@ import cv2
 import numpy as np
 from multiprocessing import shared_memory
 from multiprocessing.connection import Client
-import threading
-import time
-import os
-import ctypes
 import sys
 
 W, H = 1920, 1080
