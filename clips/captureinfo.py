@@ -10,3 +10,7 @@ class CaptureClass:
     duration: Optional[float] = None
     isMotionSensor: Optional[bool] = None
     isDoorSensor: Optional[bool] = None
+
+    def __str__(self):
+        return (f""" start: {self.startTime} | end: {self.endTime} | motion: {self.isMotionSensor} |
+                     door {self.isDoorSensor} | duration {self.duration} | trigger {self.trigger}""")

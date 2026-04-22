@@ -27,6 +27,7 @@ def findEvents():
             with listener.accept() as conn:
                 obj = conn.recv()
                 if isinstance(obj, CaptureClass):
+                        print(str(obj)) # print the __str__ representation, defined in captureinfo.py
                         capture_queue.append(obj)
 
 buffer_lock = threading.Lock()
