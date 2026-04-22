@@ -93,7 +93,7 @@ try:
                 output_data = interpreter.get_tensor(output_details[0]['index'])
                 prediction = np.argmax(output_data)
                 confidence = float(output_data[0][prediction])
-                if prediction in SOC and confidence > 0.6: 
+                if prediction in SOC and confidence >= 0.45: # confidence > 45%
                     if not active_detection:
                         active_detection = True
                         detection_start_time = datetime.now()
