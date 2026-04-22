@@ -1,82 +1,83 @@
 import cv2
 import numpy as np
 from multiprocessing import shared_memory
-from multiprocessing.connection import Listener
+from multiprocessing.connection import Client
 import threading
 import time
 import os
 import ctypes
 import sys
-import struct
 
-FPS = 24  
-BUFFER_MINUTES = 5 
-FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
-SLOT_SIZE = 80000
+W, H = 1920, 1080
 SHM_NAME = "iris_live_frame"
-INDICE_SHM = "iris_frame_indices"
+SIZE = W * H * 3
 ADDRESS = ('127.0.0.1', 8989)
 
-buffer_lock = threading.Lock()
-print("started cam")
+P_W, P_H = 600, 450
+P_X, P_Y = 0, H - P_H 
 
-if __name__ == "__main__": # RUN THIS PROGRAM WITH SUDO ON LINUX
+if __name__ == "__main__":
+    prev_zone = None
+    
     try:
-        ctypes.CDLL("libc.so.6").mlockall(1 | 2)
-        print("memory locked")
-    except Exception: pass
-
-    LISTENER = Listener(ADDRESS, authkey=b'1000011')
-    CONN = LISTENER.accept()
-
-    try:
-        shm = shared_memory.SharedMemory(name=SHM_NAME)
-        # 16 bytes, for two uint64 vars in c++
-        frame_indices = shared_memory.SharedMemory(name=INDICE_SHM, create=True, size=16) 
-        stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
-    except FileExistsError:
-        frame_indices = shared_memory.SharedMemory(name=INDICE_SHM)
-    except FileNotFoundError: 
+        conn = Client(ADDRESS, authkey=b'1000011')
+    except ConnectionRefusedError:
         sys.exit(1)
 
-    shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail"]
-    sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16]
-    shms = []
+    try:
+        old_shm = shared_memory.SharedMemory(name=SHM_NAME)
+        old_shm.close()
+        old_shm.unlink()
+    except FileNotFoundError:
+        pass
 
-    for name, size in zip(shm_names, sizes):
-        try: shms.append(shared_memory.SharedMemory(name=name, create=True, size=size))
-        except FileExistsError: shms.append(shared_memory.SharedMemory(name=name))
+    cap = cv2.VideoCapture(1)
+    if not cap.isOpened():
+        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        sys.exit(1)
 
-    frame_buffer = np.ndarray((FRAME_BUFFER_SIZE, SLOT_SIZE), dtype=np.uint8, buffer=shms[0].buf)
-    frame_sizes = np.ndarray((FRAME_BUFFER_SIZE,), dtype=np.uint32, buffer=shms[1].buf)
-    head_tail = np.ndarray((2,), dtype=np.uint64, buffer=shms[2].buf)
-    head_tail[0] = head_tail[1] = 0
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-    ctr=0 # counter for frame indices, VERY important
-    while True:
-        t_start = time.time()
+    shm = shared_memory.SharedMemory(name=SHM_NAME, create=True, size=SIZE)
+    shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
 
-        if CONN.poll():
-            try:
-                msg = CONN.recv()
-                if msg == "TRIGGER_SAVE":
-                    with buffer_lock:
-                        end_f = int(head_tail[0])
-                        start_f = int(head_tail[1])
-                        frame_indices.buf[:16] = struct.pack("QQ", start_f, end_f)
-            except EOFError: break
+    print("Camera started")
 
-        _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 25])
-        comp_bytes = compressed.tobytes()
-        comp_len = len(comp_bytes)
-        
-        if comp_len <= SLOT_SIZE:
-            with buffer_lock:
-                head = int(head_tail[0])
-                frame_buffer[head][:comp_len] = np.frombuffer(comp_bytes, dtype=np.uint8)
-                frame_sizes[head] = comp_len
-                head_tail[0] = (head + 1) % FRAME_BUFFER_SIZE
-                if head_tail[0] == head_tail[1]:
-                    head_tail[1] = (int(head_tail[1]) + 1) % FRAME_BUFFER_SIZE
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                continue
 
-        time.sleep(max(1/FPS - (time.time() - t_start), 0.001))
+            if frame.shape[0] != H or frame.shape[1] != W:
+                frame = cv2.resize(frame, (W, H))
+
+            current_zone = frame[P_Y:P_Y+P_H, P_X:P_X+P_W].copy()
+
+            if prev_zone is not None:
+                diff = cv2.absdiff(current_zone, prev_zone)
+                gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+                _, mask = cv2.threshold(gray, 25, 255, cv2.THRESH_BINARY)
+                
+                if np.sum(mask) > 5000:
+                    conn.send("TRIGGER_SAVE")
+
+                frame[P_Y:P_Y+P_H, P_X:P_X+P_W] = 0
+                frame[P_Y:P_Y+P_H, P_X:P_X+P_W][mask > 0] = [255, 255, 255]
+            else:
+                frame[P_Y:P_Y+P_H, P_X:P_X+P_W] = 0
+
+            prev_zone = current_zone
+            shared_frame[:] = frame
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        shm.close()
+        shm.unlink()
+        cap.release()
+        conn.close()
