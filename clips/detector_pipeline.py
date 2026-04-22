@@ -8,7 +8,7 @@ from sensor_helper import *
 import sys
 
 W, H = 640, 480
-SHM_NAME = "iris_live_frame"
+SHM_NAME = "iris_live_frame" # pull from the shm
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
 try:
@@ -61,7 +61,6 @@ try:
         pass
 
     while True:   
-        
         vis = shared_frame.copy() # safety copy
         is_triggered, gray, mask = tier1Actions(shared_frame) 
 

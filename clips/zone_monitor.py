@@ -9,7 +9,7 @@ from sensor_helper import *
 import sys
 
 W, H = 1920, 1080
-SHM_NAME = "iris_live_frame"
+SHM_NAME = "iris_live_frame" # pull from the shm
 
 overlap_history = deque(maxlen=10)
 is_overlapping = False
