@@ -9,12 +9,10 @@
 ImportanceEngine::ImportanceEngine(int width, int height, const Config& cfg_)
     : w(width), h(height), cfg(cfg_)
 {
-    logInfo("ImportanceEngine initialized (perceptual model)");
+    logInfo("ImportanceEngine initialized");
 
     if (cfg.useFaces)
-    {
         faceCascade.load("data/haarcascade_frontalface_default.xml");
-    }
 }
 
 ImportanceEngine::~ImportanceEngine() {}
@@ -31,37 +29,29 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
     if (frame.empty())
         return r;
 
-    // ---------------- PREP ----------------
     cv::Mat resized, gray;
     cv::resize(frame, resized, cv::Size(w, h));
     cv::cvtColor(resized, gray, cv::COLOR_BGR2GRAY);
 
     cv::Mat prevResized, prevGray;
-
     const cv::Mat& safePrev = prev.empty() ? frame : prev;
 
     cv::resize(safePrev, prevResized, cv::Size(w, h));
     cv::cvtColor(prevResized, prevGray, cv::COLOR_BGR2GRAY);
 
-    // =========================================================
-    // 1. MOTION
-    // =========================================================
+    // -------- MOTION --------
     if (cfg.useMotion)
     {
         cv::Mat diff;
         cv::absdiff(gray, prevGray, diff);
         cv::GaussianBlur(diff, diff, cv::Size(5, 5), 0);
-
         r.motion = normalizeMatMean(diff);
     }
 
-    // =========================================================
-    // 2. EDGES
-    // =========================================================
+    // -------- EDGES --------
     if (cfg.useEdges)
     {
         cv::Mat gradX, gradY, mag;
-
         cv::Sobel(gray, gradX, CV_32F, 1, 0);
         cv::Sobel(gray, gradY, CV_32F, 0, 1);
         cv::magnitude(gradX, gradY, mag);
@@ -69,28 +59,38 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
         r.edges = std::tanh(normalizeMatMean(mag) * 2.5f);
     }
 
-    // =========================================================
-    // 3. FACES
-    // =========================================================
+    // -------- FACES (OPTIMIZED) --------
     if (cfg.useFaces && !faceCascade.empty())
     {
-        std::vector<cv::Rect> faces;
-        faceCascade.detectMultiScale(gray, faces);
+        static int counter = 0;
+        counter++;
 
-        float faceScore = 0.0f;
-
-        for (const auto& f : faces)
+        if (counter % 5 == 0)  // run at ~5 FPS
         {
-            float area = (f.width * f.height) / float(w * h);
-            faceScore += area;
-        }
+            cv::Mat small;
+            cv::resize(gray, small, cv::Size(w / 2, h / 2));
 
-        r.faces = std::tanh(faceScore * 3.0f);
+            std::vector<cv::Rect> faces;
+            faceCascade.detectMultiScale(small, faces);
+
+            float faceScore = 0.0f;
+
+            for (auto& f : faces)
+            {
+                f.x *= 2;
+                f.y *= 2;
+                f.width *= 2;
+                f.height *= 2;
+
+                float area = (f.width * f.height) / float(w * h);
+                faceScore += area;
+            }
+
+            r.faces = std::tanh(faceScore * 3.0f);
+        }
     }
 
-    // =========================================================
-    // 4. GLOBAL IMPORTANCE
-    // =========================================================
+    // -------- GLOBAL --------
     float raw =
         0.45f * r.motion +
         0.35f * r.edges +
@@ -100,8 +100,6 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
     prevGlobal = r.global;
 
     r.global = std::clamp(r.global, 0.0f, 1.0f);
-
-    // optional confidence signal (stable proxy)
     r.confidence = 1.0f - std::abs(r.global - raw);
 
     return r;

@@ -2,7 +2,6 @@
 #include <thread>
 #include <chrono>
 #include <cstdint>
-#include <cstring>
 
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -17,11 +16,11 @@ struct SharedEventBuffer {
     uint64_t endFrame;
 };
 
-int main() {
+int main()
+{
     logInfo("Iris-Lite Compression Engine starting");
 
     Config cfg;
-
     if (!loadConfig(cfg, "config/config.json"))
     {
         logError("Failed to load config.json");
@@ -29,26 +28,24 @@ int main() {
     }
 
     CompressionEngine engine;
-
     if (!engine.initialize(cfg))
     {
-        logError("Failed to initialize CompressionEngine");
+        logError("Failed to initialize engine");
         return -1;
     }
 
-    // Python multiprocessing.shared_memory name
-    const char* shm_name = "iris_concern_indices";
-
-    int fd = shm_open(shm_name, O_RDONLY, 0666);
-    if (fd < 0) {
-        logError("Failed to open event shared memory");
+    int fd = shm_open("iris_concern_indices", O_RDONLY, 0666);
+    if (fd < 0)
+    {
+        logError("Failed to open shared memory");
         return -1;
     }
 
     void* ptr = mmap(nullptr, sizeof(SharedEventBuffer),
         PROT_READ, MAP_SHARED, fd, 0);
 
-    if (ptr == MAP_FAILED) {
+    if (ptr == MAP_FAILED)
+    {
         logError("mmap failed");
         close(fd);
         return -1;
@@ -56,41 +53,38 @@ int main() {
 
     auto* shared = reinterpret_cast<SharedEventBuffer*>(ptr);
 
-    logInfo("Listening for events...");
-
     uint64_t lastStart = 0;
     uint64_t lastEnd = 0;
 
-    // main.py func
-    while (true) {
-        uint64_t START_IDX = shared->startFrame;
-        uint64_t END_IDX = shared->endFrame;
-        
-        if (START_IDX != lastStart || END_IDX != lastEnd) {
-            lastStart = START_IDX;
-            lastEnd = END_IDX;
+    logInfo("Listening for events...");
 
-            // print out the start & end index values
-            std::cout << "START INDEX >> " << START_IDX << std::endl;
-            std::cout << "END INDEX >> " << END_IDX << std::endl;
+    while (true)
+    {
+        uint64_t start = shared->startFrame;
+        uint64_t end = shared->endFrame;
 
-            auto files = listVideoFiles(cfg.inputFolder);
-            for (const auto& file : files) {
-                if (END_IDX > START_IDX) {
-                    engine.processVideoClip(file, START_IDX, END_IDX);
-                }
-                else {
-                    logError("Invalid indices: END_IDX must be greater than START_IDX");
-                    continue;
-                }
-                
-                moveFile(file, cfg.processedFolder + "/" + getFilename(file));
+        if (start != lastStart || end != lastEnd)
+        {
+            lastStart = start;
+            lastEnd = end;
+
+            if (end > start)
+            {
+                EventWindow event;
+                event.startFrame = start;
+                event.endFrame = end;
+                event.trigger = "python_event";
+
+                engine.processEvent(event);
+            }
+            else
+            {
+                logError("Invalid frame window");
             }
         }
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
-    // end main.py func
 
     munmap(ptr, sizeof(SharedEventBuffer));
     close(fd);
