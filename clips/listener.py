@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 from sensor_helper import *
 import warnings
+import sys
 
 warnings.simplefilter('ignore', Warning) 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
@@ -29,18 +30,23 @@ output_details = interpreter.get_output_details()
 p = pyaudio.PyAudio()
 device_index = None
 
+# Scan for the actual hardware device
 for i in range(p.get_device_count()):
     dev_info = p.get_device_info_by_index(i)
-    if "default" in dev_info['name'] or "dsnoop" in dev_info['name']:
-        device_index = i
-        break
+    # RPi webcams often show up as 'USB Device' or 'hw:X,0'
+    if dev_info['maxInputChannels'] > 0:
+        if "usb" in dev_info['name'].lower() or "hw" in dev_info['name'].lower():
+            device_index = i
+            break
 
-stream = p.open(format=pyaudio.paFloat32, 
-                channels=1, 
-                rate=RATE,
-                input=True, 
-                input_device_index=device_index,
-                frames_per_buffer=CHUNK)
+if device_index is None:
+    device_index = p.get_default_input_device_info()['index']
+
+try:
+    stream = p.open(format=pyaudio.paFloat32, channels=1, rate=RATE, input=True, input_device_index=device_index,frames_per_buffer=CHUNK)
+except OSError:
+    stream = p.open(format=pyaudio.paFloat32, channels=2, rate=RATE, input=True, input_device_index=device_index,frames_per_buffer=CHUNK)
+
 
 audio_buffer = collections.deque(maxlen=RATE * 3)
 
@@ -70,6 +76,10 @@ try:
         data = stream.read(CHUNK, exception_on_overflow=False)
         chunk = np.frombuffer(data, dtype=np.float32)
         
+        # If the stream opened as 2 channels, downmix to mono
+        if stream._channels == 2:
+            chunk = chunk.reshape(-1, 2).mean(axis=1)
+
         current_volume = np.sqrt(np.mean(chunk**2))
         print(f"Volume: {current_volume:.5f} | Trigger: {current_volume > THRESHOLD}", end='\r')
         
