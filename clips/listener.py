@@ -9,10 +9,11 @@ from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 from sensor_helper import *
 import warnings
+import sys
 
 warnings.simplefilter('ignore', Warning) 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
-SOC = [2, 3, 4, 5, 6, 7] 
+SOC = [2, 3, 4, 5, 6, 7]  # ambience isn't concerning WHATSOEVER, dog barking is a grey zone, but included to be safe
 
 MODEL = os.path.join(os.path.dirname(__file__), "sound_model.tflite")
 RATE = 16000 
@@ -31,17 +32,21 @@ device_index = None
 
 for i in range(p.get_device_count()):
     dev_info = p.get_device_info_by_index(i)
-    if "default" in dev_info['name'] or "dsnoop" in dev_info['name']:
-        device_index = i
-        break
+    if dev_info['maxInputChannels'] > 0:
+        if "usb" in dev_info['name'].lower() or "hw" in dev_info['name'].lower():
+            device_index = i
+            break
 
-dev_info = p.get_device_info_by_index(device_index)
-stream = p.open(format=pyaudio.paFloat32, 
-                channels=(p.get_device_info_by_index(device_index))['maxInputChannels'], 
-                rate=RATE,
-                input=True, 
-                input_device_index=device_index,
-                frames_per_buffer=CHUNK)
+if device_index is None:
+    try:
+        device_index = p.get_default_input_device_info()['index']
+    except:
+        sys.exit(1)
+
+try:
+    stream = p.open(format=pyaudio.paFloat32, channels=1, rate=RATE, input=True, input_device_index=device_index, frames_per_buffer=CHUNK)
+except:
+    stream = p.open(format=pyaudio.paFloat32, channels=2, rate=RATE, input=True, input_device_index=device_index, frames_per_buffer=CHUNK)
 
 audio_buffer = collections.deque(maxlen=RATE * 3)
 
@@ -50,7 +55,6 @@ def pre_process(audio_np):
     spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=128, hop_length=327)
     log_spec = librosa.power_to_db(spec, ref=1.0)
     log_spec = (log_spec - np.min(log_spec)) / (np.max(log_spec) - np.min(log_spec) + 1e-6)
-    
     if log_spec.shape[1] > 98:
         log_spec = log_spec[:, :98]
     elif log_spec.shape[1] < 98:
@@ -71,26 +75,24 @@ try:
         data = stream.read(CHUNK, exception_on_overflow=False)
         chunk = np.frombuffer(data, dtype=np.float32)
         
+        if stream._channels == 2:
+            chunk = chunk.reshape(-1, 2).mean(axis=1)
+
         current_volume = np.sqrt(np.mean(chunk**2))
         print(f"Volume: {current_volume:.5f} | Trigger: {current_volume > THRESHOLD}", end='\r')
         
         if current_volume > THRESHOLD:
             audio_buffer.extend(chunk)
-
             if len(audio_buffer) >= (RATE * 2):
                 audio_array = np.array(list(audio_buffer))
                 recent_audio = audio_array[-(RATE * 2):]
-                
                 processed_data = pre_process(recent_audio)
                 input_data = processed_data[np.newaxis, ..., np.newaxis].astype(np.float32)
-                
                 interpreter.set_tensor(input_details[0]['index'], input_data)
                 interpreter.invoke()
                 output_data = interpreter.get_tensor(output_details[0]['index'])
-                
                 prediction = np.argmax(output_data)
                 confidence = float(output_data[0][prediction])
-
                 if prediction in SOC and confidence > 0.6: 
                     if not active_detection:
                         active_detection = True
@@ -99,32 +101,19 @@ try:
                         max_confidence = confidence
                     else:
                         max_confidence = max(max_confidence, confidence)
-                
                 elif active_detection:
                     detection_end_time = datetime.now()
                     buffered_start = detection_start_time - timedelta(seconds=5)
                     buffered_end = detection_end_time + timedelta(seconds=5)
                     total_duration = (buffered_end - buffered_start).total_seconds()
-                    
-                    new_capture = CaptureClass(
-                        startTime=buffered_start.strftime("%H:%M:%S"), 
-                        endTime=buffered_end.strftime("%H:%M:%S"),
-                        trigger=f"{current_label} ({max_confidence*100:.1f}%)",
-                        duration=round(total_duration, 2),
-                        isMotionSensor=check_gpio(27), 
-                        isDoorSensor=check_gpio(17)
-                    )
+                    new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"), trigger=f"{current_label} ({max_confidence*100:.1f}%)", duration=round(total_duration, 2), isMotionSensor=check_gpio(27), isDoorSensor=check_gpio(17))
                     print(f"\nCaptured: {new_capture.trigger}")
-
                     try:
                         with Client(ADDRESS, authkey=AUTHKEY) as conn:
                             conn.send(new_capture)
-                    except:
-                        pass
-                    
+                    except: pass
                     active_detection = False
                     max_confidence = 0.0
-
 except KeyboardInterrupt: 
     stream.stop_stream()
     stream.close()
