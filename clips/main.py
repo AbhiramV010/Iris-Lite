@@ -16,21 +16,19 @@ SLOT_SIZE = 80000
 SHM_NAME = "iris_live_frame"
 INDICE_SHM = "iris_frame_indices"
 ADDRESS = ('127.0.0.1', 8989)
-global LISTENER, CONN
-LISTENER = Listener(ADDRESS, authkey=b'1000011')
-CONN = LISTENER.accept()
-
-def lock_memory():
-    try:
-        ctypes.CDLL("libc.so.6").mlockall(1 | 2)
-        print("memory locked")
-    except Exception: pass
 
 buffer_lock = threading.Lock()
 print("started cam")
 
 if __name__ == "__main__":
-    lock_memory()
+    try:
+        ctypes.CDLL("libc.so.6").mlockall(1 | 2)
+        print("memory locked")
+    except Exception: pass
+    
+    LISTENER = Listener(ADDRESS, authkey=b'1000011')
+    CONN = LISTENER.accept()
+
     try:
         shm = shared_memory.SharedMemory(name=SHM_NAME)
         # 16 bytes, for two uint64 vars in c++
