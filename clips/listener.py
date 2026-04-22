@@ -36,7 +36,7 @@ for i in range(p.get_device_count()):
         break
 
 stream = p.open(format=pyaudio.paFloat32, 
-                channels=1, 
+                channels=2, # stereo audio for Logitech C920 camera that we're using
                 rate=RATE,
                 input=True, 
                 input_device_index=device_index,
