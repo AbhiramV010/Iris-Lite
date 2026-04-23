@@ -3,6 +3,18 @@
 
 #include <opencv2/opencv.hpp>
 #include <cmath>
+#include <cstdint>
+#include <string>
+#include <format>
+#include <chrono>
+#include <iostream>
+
+auto now = std::chrono::system_clock::now();
+
+const std::string TIME_STAMP = std::format("{:%Y-%m-%d %H:%M:%S}", now);
+const std::string FILE_PATH = std::format("/clipDrive/clips/{}.mp4"); 
+const std::string BUFFER_SHM = std::format("/iris_frame_buffer_data"); // frame buffer
+const std::string DATA_SHM = std::format("/iris_indices"); // metadata
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -124,6 +136,21 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
     if (encoder->isOpen())
         encoder->close();
+}
+
+bool CompressionEngine::takeClip(uint64_t START_IDX, uint64_t END_IDX) { // function written to take a clip,  
+    if (END_IDX < START_IDX) {
+        std::cout << "END_IDX is LESS than START_IDX " << std::endl;
+        return false;
+    } else { // logic for taking the clip
+        int fd;
+        
+        // TODO
+        for (int c=START_IDX; c <= END_IDX) { // LEQ because we need to count the last frame (it don't make a diff, but it needs to work properly, no?)
+            // this loops starting from the beginning frame indice to the very end frame indice of the 'event of concern' provided by py
+            // what I'm confused about is how to take the clip that was COMPRESSED, and not from the raw memory buffer
+        }
+    }
 }
 
 void CompressionEngine::shutdown()
