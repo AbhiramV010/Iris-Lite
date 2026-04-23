@@ -38,10 +38,8 @@ if __name__ == "__main__":
     event_thread = threading.Thread(target=findEvents, daemon=True)
     event_thread.start()
 
-    try:
-        shm = shared_memory.SharedMemory(name=SHM_NAME)
-        stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
-    except FileNotFoundError: sys.exit(1)
+    shm = shared_memory.SharedMemory(name=SHM_NAME)
+    stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
 
     shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", CONCERN_SHM, SHM_NAME_INDICE]
     sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16, 16, FRAME_BUFFER_SIZE * 16]

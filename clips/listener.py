@@ -108,10 +108,8 @@ try:
                     total_duration = (buffered_end - buffered_start).total_seconds()
                     new_capture = CaptureClass(startTime=buffered_start.strftime("%H:%M:%S"), endTime=buffered_end.strftime("%H:%M:%S"), trigger=f"{current_label} ({max_confidence*100:.1f}%)", duration=round(total_duration, 2), isMotionSensor=check_gpio(27), isDoorSensor=check_gpio(17))
                     print(f"\nCaptured: {new_capture.trigger}")
-                    try:
-                        with Client(ADDRESS, authkey=AUTHKEY) as conn:
-                            conn.send(new_capture)
-                    except: pass
+                    with Client(ADDRESS, authkey=AUTHKEY) as conn:
+                        conn.send(new_capture)
                     active_detection = False
                     max_confidence = 0.0
 except KeyboardInterrupt: 

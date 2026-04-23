@@ -42,7 +42,7 @@ void CompressionEngine::startNewSegment(int crf)
         return;
     }
 
-    currentCRF = crf;
+    currentCRF = crf;   
 }
 
 void CompressionEngine::processEvent(const EventWindow& event)

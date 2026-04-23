@@ -68,11 +68,8 @@ def detectGrassOverlap(grass_mask, px20):
             return CaptureClass(startTime=buff_start, endTime=buff_end, trigger="Grass Overlap", duration=duration, isMotionSensor=check_gpio(17), isDoorSensor=check_gpio(27))
     return None
 
-try:
-    shm = shared_memory.SharedMemory(name=SHM_NAME)
-    shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
-except FileNotFoundError:
-    sys.exit(1)
+shm = shared_memory.SharedMemory(name=SHM_NAME)
+shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
 
 fgbg = cv2.createBackgroundSubtractorKNN(history=350, dist2Threshold=400.0, detectShadows=False) 
 frame_raw = shared_frame.copy()
