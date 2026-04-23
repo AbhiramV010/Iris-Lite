@@ -71,7 +71,9 @@ def detectGrassOverlap(grass_mask, px20):
 shm = shared_memory.SharedMemory(name=SHM_NAME)
 shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
 
-fgbg = cv2.createBackgroundSubtractorKNN(history=350, dist2Threshold=400.0, detectShadows=False) 
+fgbg = cv2.bgsegm.createBackgroundSubtractorGSOC(nSamples=20, replaceRate=0.003, 
+                                                 propagationRate=0.01, hitsThreshold=32)
+
 frame_raw = shared_frame.copy()
 frame = cv2.resize(frame_raw, (640, 360))
 hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
