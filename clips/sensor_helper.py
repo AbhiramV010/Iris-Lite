@@ -36,4 +36,4 @@ else:
     print("the system will run with GPIO functionality off, as no GPIO interface is detected")
 
 if __name__ == "__main__":
-    raise ImportError("This file is designed for import, not direct execution.")
+    raise RuntimeError("This isn't meant to be executed")

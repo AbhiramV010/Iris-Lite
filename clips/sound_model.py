@@ -18,3 +18,6 @@ def defineModel():
         layers.Dense(8, activation='softmax') # 8 UNIQUE sounds, sound_0 to sound_7
     ])
     return model 
+
+if __name__ == "__main__":
+    raise RuntimeError("This isn't meant to be executed")
