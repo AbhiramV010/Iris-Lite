@@ -2,7 +2,6 @@ import numpy as np
 import pyaudio
 import collections
 import ai_edge_litert.interpreter as litert
-import librosa
 from multiprocessing.connection import Client
 import os
 from datetime import datetime, timedelta
@@ -50,10 +49,27 @@ except:
 
 audio_buffer = collections.deque(maxlen=RATE * 3)
 
+def get_mel_filters(sr, n_fft, n_mels):
+    def hz_to_mel(hz): return 2595 * np.log10(1 + hz / 700.0)
+    def mel_to_hz(mel): return 700 * (10**(mel / 2595.0) - 1)
+    mel_pts = np.linspace(hz_to_mel(0), hz_to_mel(sr / 2), n_mels + 2)
+    hz_pts = mel_to_hz(mel_pts)
+    bin_pts = np.floor((n_fft + 1) * hz_pts / sr).astype(int)
+    filters = np.zeros((n_mels, n_fft // 2 + 1))
+    for i in range(1, n_mels + 1):
+        filters[i-1, bin_pts[i-1]:bin_pts[i]] = (np.arange(bin_pts[i-1], bin_pts[i]) - bin_pts[i-1]) / (bin_pts[i] - bin_pts[i-1])
+        filters[i-1, bin_pts[i]:bin_pts[i+1]] = (bin_pts[i+1] - np.arange(bin_pts[i], bin_pts[i+1])) / (bin_pts[i+1] - bin_pts[i])
+    return filters
+
 def pre_process(audio_np):
-    audio_np = librosa.util.normalize(audio_np)
-    spec = librosa.feature.melspectrogram(y=audio_np, sr=RATE, n_mels=128, hop_length=327)
-    log_spec = librosa.power_to_db(spec, ref=1.0)
+    audio_np = audio_np / (np.max(np.abs(audio_np)) + 1e-9)
+    n_fft, n_mels, hop_length = 2048, 128, 327
+    window = np.hanning(n_fft)
+    frames = np.array([audio_np[i:i+n_fft] for i in range(0, len(audio_np)-n_fft, hop_length)])
+    stft = np.abs(np.fft.rfft(frames * window, n=n_fft))**2
+    filters = get_mel_filters(RATE, n_fft, n_mels)
+    spec = np.dot(stft, filters.T).T
+    log_spec = 10 * np.log10(np.maximum(1e-10, spec))
     log_spec = (log_spec - np.min(log_spec)) / (np.max(log_spec) - np.min(log_spec) + 1e-6)
     if log_spec.shape[1] > 98:
         log_spec = log_spec[:, :98]
@@ -93,7 +109,7 @@ try:
                 output_data = interpreter.get_tensor(output_details[0]['index'])
                 prediction = np.argmax(output_data)
                 confidence = float(output_data[0][prediction])
-                if prediction in SOC and confidence >= 0.45: # confidence > 45%
+                if prediction in SOC and confidence >= 0.00: # confidence is minimum 45%
                     if not active_detection:
                         active_detection = True
                         detection_start_time = datetime.now()
