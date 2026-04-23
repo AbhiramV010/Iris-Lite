@@ -4,7 +4,10 @@
 
 **STEAM IC 2026 Computer Science Project**
 
+*Contributors:*
 Project Programming by Abhiram Vadali & Shreyash Thakur
+Report & Presentation by Subeg Singh Gill, Abhiram Vadali, & Atharv Rajesh
+README.md by Subeg Singh
 
 ---
 
