@@ -9,13 +9,6 @@
 #include <chrono>
 #include <iostream>
 
-auto now = std::chrono::system_clock::now();
-
-const std::string TIME_STAMP = std::format("{:%Y-%m-%d %H:%M:%S}", now);
-const std::string FILE_PATH = std::format("/clipDrive/clips/{}.mp4"); 
-const std::string BUFFER_SHM = std::format("/iris_frame_buffer_data"); // frame buffer
-const std::string DATA_SHM = std::format("/iris_indices"); // metadata
-
 bool CompressionEngine::initialize(const Config& cfg)
 {
     importance = std::make_unique<ImportanceEngine>(
@@ -37,18 +30,19 @@ bool CompressionEngine::initialize(const Config& cfg)
     if (!sharedBuffer->initialize())
         return false;
 
+    importanceState = 0.0f;
+    momentum = 0.0f;
+    currentCRF = -1;
     running = true;
     return true;
 }
 
-void CompressionEngine::startNewSegment(int crf)
+void CompressionEngine::startNewSegment(const std::string& fileName, int crf)
 {
     if (encoder->isOpen())
         encoder->close();
 
-    std::string name = "event_" + std::to_string(segmentIndex++) + ".mp4";
-
-    if (!encoder->open(name, crf))
+    if (!encoder->open(fileName, crf))
     {
         running = false;
         return;
@@ -73,7 +67,6 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
     cv::Mat prev;
     uint64_t frameIndex = 0;
-
     int processed = 0;
     const int maxFrames = 300; // safety cap
 
@@ -91,7 +84,6 @@ void CompressionEngine::processEvent(const EventWindow& event)
             continue;
 
         auto signal = importance->analyze(frame, prev);
-
         float imp = signal.global;
 
         // smoothing
@@ -118,8 +110,11 @@ void CompressionEngine::processEvent(const EventWindow& event)
         int crf = policy->computeCRF(importanceState, momentum, base);
 
         //  reduce thrashing
-        if (currentCRF == -1 || std::abs(crf - currentCRF) >= 5)
-            startNewSegment(crf);
+        if (!encoder->isOpen() || (currentCRF != -1 && std::abs(crf - currentCRF) >= 5))
+        {
+            std::string name = "segment_" + std::to_string(segmentIndex++) + ".mp4";
+            startNewSegment(name, crf);
+        }
 
         //  encode
         if (encoder->isOpen())
@@ -130,33 +125,30 @@ void CompressionEngine::processEvent(const EventWindow& event)
                 break;
             }
         }
-
         prev = frame;
     }
-
-    if (encoder->isOpen())
-        encoder->close();
 }
 
-bool CompressionEngine::takeClip(uint64_t START_IDX, uint64_t END_IDX) { // function written to take a clip,  
-    if (END_IDX < START_IDX) {
-        std::cout << "END_IDX is LESS than START_IDX " << std::endl;
-        return false;
-    } else { // logic for taking the clip
-        int fd;
-        
-        // TODO
-        for (int c=START_IDX; c <= END_IDX) { // LEQ because we need to count the last frame (it don't make a diff, but it needs to work properly, no?)
-            // this loops starting from the beginning frame indice to the very end frame indice of the 'event of concern' provided by py
-            // what I'm confused about is how to take the clip that was COMPRESSED, and not from the raw memory buffer
-        }
-    }
+void CompressionEngine::takeClip(uint64_t START_IDX, uint64_t END_IDX) {
+    auto now = std::chrono::system_clock::now();
+    std::string ts = std::format("{:%Y-%m-%d_%H-%M-%S}", now);
+    std::string fullPath = std::format("/clipDrive/clips/iris_lite--{}.mp4", ts);
+
+    EventWindow event;
+    event.startFrame = START_IDX;
+    event.endFrame = END_IDX;
+    event.trigger = "manual_take_clip";
+
+    startNewSegment(fullPath, 26);
+    processEvent(event); 
+    
+    if (encoder->isOpen())
+        encoder->close();
 }
 
 void CompressionEngine::shutdown()
 {
     running = false;
-
     if (encoder)
         encoder->close();
 }

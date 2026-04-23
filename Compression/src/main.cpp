@@ -81,10 +81,13 @@ int main()
             {
                 logError("Invalid frame window");
             }
+
+            engine.takeClip(start, end);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
+
 
     munmap(ptr, sizeof(SharedEventBuffer));
     close(fd);
