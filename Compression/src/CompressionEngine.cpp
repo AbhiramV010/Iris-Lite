@@ -1,5 +1,4 @@
 #include "CompressionEngine.hpp"
-#include "SnapshotExtractor.hpp"
 #include "SharedMemoryConfig.hpp"
 
 #include <opencv2/opencv.hpp>
