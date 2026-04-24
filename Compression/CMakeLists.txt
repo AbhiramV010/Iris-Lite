@@ -12,19 +12,21 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# ---------------- PI 4B OPTIMIZED FLAGS ----------------
+# ---------------- SAFE OPTIMIZATION FLAGS ----------------
+# Let compiler auto-detect Pi CPU instead of forcing broken flags
 set(CMAKE_CXX_FLAGS_RELEASE
-    "-O3 -mcpu=cortex-a72 -mfpu=neon-fp-armv8 -mfloat-abi=hard"
+    "-O3 -march=native -mtune=native"
 )
 
 set(CMAKE_CXX_FLAGS_DEBUG
     "-O0 -g -Wall -Wextra"
 )
 
-# NOTE:
-# - NO -ffast-math (keeps perceptual scoring stable)
-# - explicit Cortex-A72 tuning (Pi 4 CPU)
-# - NEON enabled explicitly for OpenCV ops
+# NOTES:
+# - Removed: -mfpu=neon-fp-armv8 (causes your error)
+# - Removed: -mfloat-abi=hard (handled by OS/toolchain)
+# - Kept: strong optimization without breaking compatibility
+# - No -ffast-math (good call — keeps scoring stable)
 
 # ---------------- THREAD SUPPORT ----------------
 find_package(Threads REQUIRED)
@@ -61,10 +63,10 @@ target_link_libraries(PerceptualCompressor
     rt
 )
 
-# ---------------- OPTIONAL: STRIP IN RELEASE ----------------
-set_target_properties(PerceptualCompressor PROPERTIES
-    LINK_FLAGS_RELEASE "-s"
-)
+# ---------------- STRIP BINARIES (RELEASE ONLY) ----------------
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_link_options(PerceptualCompressor PRIVATE -s)
+endif()
 
 # ---------------- STATUS ----------------
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
