@@ -1,8 +1,6 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
-#include <cstdint>
-
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -45,14 +43,11 @@ int main()
     uint64_t lastStart = 0;
     uint64_t lastEnd = 0;
 
-    logInfo("Listening...");
-
     while (true)
     {
         uint64_t start = shared->startFrame;
         uint64_t end = shared->endFrame;
 
-        // validation
         if (start == 0 && end == 0)
             continue;
 
@@ -62,23 +57,13 @@ int main()
         if (start == lastStart && end == lastEnd)
             continue;
 
-        uint64_t diff = (start > end) ? (start - end) : (end - start);
-        if (diff > FRAME_BUFFER_SIZE)
-            continue;
-
         lastStart = start;
         lastEnd = end;
 
-        EventWindow event;
-        event.startFrame = start;
-        event.endFrame = end;
-        event.trigger = "external";
-
+        EventWindow event{ start, end, "external" };
         engine.enqueueEvent(event);
 
-        engine.processQueuedEvents();
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     munmap(ptr, sizeof(SharedEventBuffer));

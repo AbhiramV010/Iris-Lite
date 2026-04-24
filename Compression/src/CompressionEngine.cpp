@@ -1,11 +1,22 @@
 #include "CompressionEngine.hpp"
 #include "SharedMemoryConfig.hpp"
+#include "logging.hpp"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>
-#include <sys/sysinfo.h>
-#include <cmath>
-#include <algorithm>
+#include <iomanip>
+#include <sstream>
+
+// ---------------- TIME FIX (NO std::format) ----------------
+static std::string timestamp()
+{
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+
+    std::ostringstream oss;
+    oss << std::put_time(std::localtime(&t), "%Y-%m-%d_%H-%M-%S");
+    return oss.str();
+}
 
 // ---------------- INIT ----------------
 
@@ -30,13 +41,92 @@ bool CompressionEngine::initialize(const Config& cfg)
     if (!sharedBuffer->initialize())
         return false;
 
-    importanceState = 0.5f;
-    momentum = 0.5f;
-    currentCRF = cfg.crf;
-    segmentIndex = 0;
-
     running = true;
+    stopWorker = false;
+
+    worker = std::thread(&CompressionEngine::workerLoop, this);
+
     return true;
+}
+
+// ---------------- ENQUEUE ----------------
+
+void CompressionEngine::enqueueEvent(const EventWindow& event)
+{
+    {
+        std::lock_guard<std::mutex> lock(eventMutex);
+        eventQueue.push(event);
+    }
+    cv.notify_one();
+}
+
+// ---------------- WORKER LOOP ----------------
+
+void CompressionEngine::workerLoop()
+{
+    while (!stopWorker)
+    {
+        EventWindow event;
+
+        {
+            std::unique_lock<std::mutex> lock(eventMutex);
+
+            cv.wait(lock, [&] {
+                return stopWorker || !eventQueue.empty();
+                });
+
+            if (stopWorker)
+                return;
+
+            event = eventQueue.front();
+            eventQueue.pop();
+        }
+
+        processEvent(event);
+    }
+}
+
+// ---------------- EVENT PROCESSING ----------------
+
+void CompressionEngine::processEvent(const EventWindow& event)
+{
+    std::string path =
+        "/clipDrive/clips/iris_lite--" + timestamp() + ".mp4";
+
+    startNewSegment(path, currentCRF);
+
+    cv::Mat prev;
+
+    for (uint64_t i = event.startFrame; i < event.endFrame; i++)
+    {
+        std::vector<uint8_t> jpeg;
+
+        if (!sharedBuffer->getFrame(i, jpeg))
+            continue;
+
+        cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+        if (frame.empty())
+            continue;
+
+        auto signal = importance->analyze(frame, prev);
+
+        importanceState = 0.9f * importanceState + 0.1f * signal.global;
+        momentum = 0.85f * momentum + 0.15f * importanceState;
+
+        bool keep = policy->shouldKeepFrame(
+            importanceState,
+            momentum,
+            i
+        );
+
+        if (keep && encoder->isOpen())
+            encoder->writeFrame(frame);
+
+        prev = frame;
+    }
+
+    if (encoder->isOpen())
+        encoder->close();
 }
 
 // ---------------- SEGMENT ----------------
@@ -47,63 +137,18 @@ void CompressionEngine::startNewSegment(const std::string& fileName, int crf)
         encoder->close();
 
     if (!encoder->open(fileName, crf))
-    {
         running = false;
-        return;
-    }
-
-    currentCRF = crf;
-}
-
-// ---------------- EVENT QUEUE ----------------
-
-void CompressionEngine::enqueueEvent(const EventWindow& event)
-{
-    std::lock_guard<std::mutex> lock(eventMutex);
-    eventQueue.push(event);
-}
-
-void CompressionEngine::processQueuedEvents()
-{
-    while (true)
-    {
-        EventWindow event;
-
-        {
-            std::lock_guard<std::mutex> lock(eventMutex);
-
-            if (eventQueue.empty())
-                break;
-
-            event = eventQueue.front();
-            eventQueue.pop();
-        }
-
-        // run clip
-        auto now = std::chrono::system_clock::now();
-        std::string ts = std::format("{:%Y-%m-%d_%H-%M-%S}", now);
-
-        std::string path =
-            "/clipDrive/clips/iris_lite--" + ts + ".mp4";
-
-        startNewSegment(path, currentCRF);
-    }
-}
-
-// ---------------- LOAD GUARD ----------------
-
-static float getSystemLoad()
-{
-    struct sysinfo info;
-    sysinfo(&info);
-    return (float)info.loads[0] / 65536.0f;
 }
 
 // ---------------- SHUTDOWN ----------------
 
 void CompressionEngine::shutdown()
 {
-    running = false;
+    stopWorker = true;
+    cv.notify_all();
+
+    if (worker.joinable())
+        worker.join();
 
     if (encoder)
         encoder->close();

@@ -3,9 +3,10 @@
 #include <memory>
 #include <atomic>
 #include <string>
-#include <vector>
 #include <queue>
 #include <mutex>
+#include <thread>
+#include <condition_variable>
 
 #include "ImportanceEngine.hpp"
 #include "CompressionPolicy.hpp"
@@ -26,7 +27,11 @@ public:
     void shutdown();
 
     void enqueueEvent(const EventWindow& event);
-    void processQueuedEvents();
+
+private:
+    void workerLoop();
+    void processEvent(const EventWindow& event);
+    void startNewSegment(const std::string& fileName, int crf);
 
 private:
     std::atomic<bool> running{ false };
@@ -39,11 +44,13 @@ private:
     float importanceState = 0.5f;
     float momentum = 0.5f;
 
-    int currentCRF = -1;
+    int currentCRF = 28;
     int segmentIndex = 0;
 
     std::queue<EventWindow> eventQueue;
     std::mutex eventMutex;
+    std::condition_variable cv;
 
-    void startNewSegment(const std::string& fileName, int crf);
+    std::thread worker;
+    bool stopWorker = false;
 };
