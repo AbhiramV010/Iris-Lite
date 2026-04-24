@@ -1,17 +1,17 @@
-#include "H264Encoder.hpp"
+#include "H264encoder.hpp"
 #include "logging.hpp"
 #include <sstream>
 
-H264Encoder::H264Encoder(int w, int h, int fps, bool hw)
+H264encoder::H264encoder(int w, int h, int fps, bool hw)
     : width(w), height(h), fps(fps), useHardware(hw) {
 }
 
-H264Encoder::~H264Encoder()
+H264encoder::~H264encoder()
 {
     close();
 }
 
-bool H264Encoder::open(const std::string& path, int crf)
+bool H264encoder::open(const std::string& path, int crf)
 {
     currentCRF = crf;
     ffmpegCommand = buildCommand(path, crf);
@@ -24,7 +24,7 @@ bool H264Encoder::open(const std::string& path, int crf)
     return true;
 }
 
-bool H264Encoder::writeFrame(const cv::Mat& frame)
+bool H264encoder::writeFrame(const cv::Mat& frame)
 {
     if (!ffmpegPipe || frame.empty())
         return false;
@@ -47,7 +47,7 @@ bool H264Encoder::writeFrame(const cv::Mat& frame)
     return true;
 }
 
-void H264Encoder::close()
+void H264encoder::close()
 {
     if (ffmpegPipe)
         pclose(ffmpegPipe);

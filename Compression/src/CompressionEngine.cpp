@@ -20,7 +20,7 @@ bool CompressionEngine::initialize(const Config& cfg)
 
     policy = std::make_unique<CompressionPolicy>();
 
-    encoder = std::make_unique<H264Encoder>(
+    encoder = std::make_unique<H264encoder>(
         cfg.encodeWidth,
         cfg.encodeHeight,
         cfg.fps,

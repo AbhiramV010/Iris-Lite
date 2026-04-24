@@ -9,7 +9,7 @@
 
 #include "ImportanceEngine.hpp"
 #include "CompressionPolicy.hpp"
-#include "H264Encoder.hpp"
+#include "H264encoder.hpp"
 #include "SharedFrameBuffer.hpp"
 
 struct EventWindow
@@ -33,7 +33,7 @@ private:
 
     std::unique_ptr<ImportanceEngine> importance;
     std::unique_ptr<CompressionPolicy> policy;
-    std::unique_ptr<H264Encoder> encoder;
+    std::unique_ptr<H264encoder> encoder;
     std::unique_ptr<SharedFrameBuffer> sharedBuffer;
 
     float importanceState = 0.5f;

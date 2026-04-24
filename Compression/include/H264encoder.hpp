@@ -4,11 +4,11 @@
 #include <string>
 #include <cstdio>
 
-class H264Encoder
+class H264encoder
 {
 public:
-    H264Encoder(int width, int height, int fps, bool useHardware);
-    ~H264Encoder();
+    H264encoder(int width, int height, int fps, bool useHardware);
+    ~H264encoder();
 
     bool open(const std::string& outputPath, int crf);
     bool writeFrame(const cv::Mat& frame);
