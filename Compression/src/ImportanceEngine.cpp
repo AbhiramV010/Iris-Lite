@@ -65,7 +65,7 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
         static int counter = 0;
         counter++;
 
-        if (counter % 5 == 0)  // run at ~5 FPS
+        if (counter % 10 == 0)
         {
             cv::Mat small;
             cv::resize(gray, small, cv::Size(w / 2, h / 2));

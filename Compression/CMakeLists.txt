@@ -4,27 +4,21 @@ project(PerceptualCompressor LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(OpenCV_DIR "C:/dev/opencv/build/x64/vc16/lib")
 find_package(OpenCV REQUIRED)
 
 add_executable(PerceptualCompressor
     src/main.cpp
     src/CompressionEngine.cpp
-
-    
     src/Utils.cpp
     src/logging.cpp
     src/Config.cpp
     src/H264encoder.cpp
-
-    
-    
     src/ImportanceEngine.cpp
     src/CompressionPolicy.cpp
-    src/FrameWindowBuffer.cpp 
-     
-    
-    src/EventMemory.cpp "src/SharedFrameBuffer.cpp" "src/SnapshotExtractor.cpp")
+    src/FrameWindowBuffer.cpp
+    src/EventMemory.cpp
+    src/SharedFrameBuffer.cpp
+)
 
 target_include_directories(PerceptualCompressor PRIVATE
     ${CMAKE_SOURCE_DIR}/include

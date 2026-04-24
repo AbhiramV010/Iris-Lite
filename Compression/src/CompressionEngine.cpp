@@ -1,13 +1,14 @@
 #include "CompressionEngine.hpp"
 #include "SnapshotExtractor.hpp"
+#include "SharedMemoryConfig.hpp"
 
 #include <opencv2/opencv.hpp>
-#include <cmath>
-#include <cstdint>
-#include <string>
-#include <format>
 #include <chrono>
-#include <iostream>
+#include <sys/sysinfo.h>
+#include <cmath>
+#include <algorithm>
+
+// ---------------- INIT ----------------
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -30,12 +31,16 @@ bool CompressionEngine::initialize(const Config& cfg)
     if (!sharedBuffer->initialize())
         return false;
 
-    importanceState = 0.0f;
-    momentum = 0.0f;
-    currentCRF = -1;
+    importanceState = 0.5f;
+    momentum = 0.5f;
+    currentCRF = cfg.crf;
+    segmentIndex = 0;
+
     running = true;
     return true;
 }
+
+// ---------------- SEGMENT ----------------
 
 void CompressionEngine::startNewSegment(const std::string& fileName, int crf)
 {
@@ -48,107 +53,59 @@ void CompressionEngine::startNewSegment(const std::string& fileName, int crf)
         return;
     }
 
-    currentCRF = crf;   
+    currentCRF = crf;
 }
 
-void CompressionEngine::processEvent(const EventWindow& event)
+// ---------------- EVENT QUEUE ----------------
+
+void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
-    if (!running)
-        return;
+    std::lock_guard<std::mutex> lock(eventMutex);
+    eventQueue.push(event);
+}
 
-    auto snapshot = SnapshotExtractor::extract(
-        *sharedBuffer,
-        event.startFrame,
-        event.endFrame
-    );
-
-    if (snapshot.empty())
-        return;
-
-    cv::Mat prev;
-    uint64_t frameIndex = 0;
-    int processed = 0;
-    const int maxFrames = 300; // safety cap
-
-    for (auto& jpeg : snapshot)
+void CompressionEngine::processQueuedEvents()
+{
+    while (true)
     {
-        if (processed++ > maxFrames)
-            break;
+        EventWindow event;
 
-        // skip tiny/invalid frames (cheap optimization)
-        if (jpeg.size() < 2000)
-            continue;
-
-        cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
-        if (frame.empty())
-            continue;
-
-        auto signal = importance->analyze(frame, prev);
-        float imp = signal.global;
-
-        // smoothing
-        importanceState = 0.9f * importanceState + 0.1f * imp;
-        momentum = 0.85f * momentum + 0.15f * importanceState;
-
-        //  FRAME DROPPING (REAL)
-        bool keep = policy->shouldKeepFrame(
-            importanceState,
-            momentum,
-            frameIndex++
-        );
-
-        if (!keep)
-            continue;
-
-        //  SMART CRF BASE
-        int base = 26;
-        if (importanceState > 0.7f)
-            base = 20;
-        else if (importanceState < 0.3f)
-            base = 32;
-
-        int crf = policy->computeCRF(importanceState, momentum, base);
-
-        //  reduce thrashing
-        if (!encoder->isOpen() || (currentCRF != -1 && std::abs(crf - currentCRF) >= 5))
         {
-            std::string name = "segment_" + std::to_string(segmentIndex++) + ".mp4";
-            startNewSegment(name, crf);
-        }
+            std::lock_guard<std::mutex> lock(eventMutex);
 
-        //  encode
-        if (encoder->isOpen())
-        {
-            if (!encoder->writeFrame(frame))
-            {
-                running = false;
+            if (eventQueue.empty())
                 break;
-            }
+
+            event = eventQueue.front();
+            eventQueue.pop();
         }
-        prev = frame;
+
+        // run clip
+        auto now = std::chrono::system_clock::now();
+        std::string ts = std::format("{:%Y-%m-%d_%H-%M-%S}", now);
+
+        std::string path =
+            "/clipDrive/clips/iris_lite--" + ts + ".mp4";
+
+        startNewSegment(path, currentCRF);
     }
 }
 
-void CompressionEngine::takeClip(uint64_t START_IDX, uint64_t END_IDX) {
-    auto now = std::chrono::system_clock::now();
-    std::string ts = std::format("{:%Y-%m-%d_%H-%M-%S}", now);
-    std::string fullPath = std::format("/clipDrive/clips/iris_lite--{}.mp4", ts);
+// ---------------- LOAD GUARD ----------------
 
-    EventWindow event;
-    event.startFrame = START_IDX;
-    event.endFrame = END_IDX;
-    event.trigger = "manual_take_clip";
-
-    startNewSegment(fullPath, 26);
-    processEvent(event); 
-    
-    if (encoder->isOpen())
-        encoder->close();
+static float getSystemLoad()
+{
+    struct sysinfo info;
+    sysinfo(&info);
+    return (float)info.loads[0] / 65536.0f;
 }
+
+// ---------------- SHUTDOWN ----------------
 
 void CompressionEngine::shutdown()
 {
     running = false;
+
     if (encoder)
         encoder->close();
 }

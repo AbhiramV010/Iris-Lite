@@ -4,6 +4,8 @@
 #include <atomic>
 #include <string>
 #include <vector>
+#include <queue>
+#include <mutex>
 
 #include "ImportanceEngine.hpp"
 #include "CompressionPolicy.hpp"
@@ -23,7 +25,8 @@ public:
     bool initialize(const Config& cfg);
     void shutdown();
 
-    void processEvent(const EventWindow& event);
+    void enqueueEvent(const EventWindow& event);
+    void processQueuedEvents();
 
 private:
     std::atomic<bool> running{ false };
@@ -35,9 +38,12 @@ private:
 
     float importanceState = 0.5f;
     float momentum = 0.5f;
-    bool initialize(const Config& cfg);
+
     int currentCRF = -1;
     int segmentIndex = 0;
 
-    void startNewSegment(int crf);
+    std::queue<EventWindow> eventQueue;
+    std::mutex eventMutex;
+
+    void startNewSegment(const std::string& fileName, int crf);
 };
