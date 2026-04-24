@@ -26,7 +26,7 @@ set(SOURCES
     src/CompressionEngine.cpp
     src/CompressionPolicy.cpp
     src/Config.cpp
-    src/H264encoder.cpp
+    src/H264Encoder.cpp
     src/ImportanceEngine.cpp
     src/SharedFrameBuffer.cpp
     src/logging.cpp

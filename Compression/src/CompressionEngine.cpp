@@ -30,7 +30,7 @@ bool CompressionEngine::initialize(const Config& cfg)
 
     policy = std::make_unique<CompressionPolicy>();
 
-    encoder = std::make_unique<H264encoder>(
+    Encoder = std::make_unique<H264Encoder>(
         cfg.encodeWidth,
         cfg.encodeHeight,
         cfg.fps,
@@ -119,24 +119,24 @@ void CompressionEngine::processEvent(const EventWindow& event)
             i
         );
 
-        if (keep && encoder->isOpen())
-            encoder->writeFrame(frame);
+        if (keep && Encoder->isOpen())
+            Encoder->writeFrame(frame);
 
         prev = frame;
     }
 
-    if (encoder->isOpen())
-        encoder->close();
+    if (Encoder->isOpen())
+        Encoder->close();
 }
 
 // ---------------- SEGMENT ----------------
 
 void CompressionEngine::startNewSegment(const std::string& fileName, int crf)
 {
-    if (encoder->isOpen())
-        encoder->close();
+    if (Encoder->isOpen())
+        Encoder->close();
 
-    if (!encoder->open(fileName, crf))
+    if (!Encoder->open(fileName, crf))
         running = false;
 }
 
@@ -150,6 +150,6 @@ void CompressionEngine::shutdown()
     if (worker.joinable())
         worker.join();
 
-    if (encoder)
-        encoder->close();
+    if (Encoder)
+        Encoder->close();
 }
