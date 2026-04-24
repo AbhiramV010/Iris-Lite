@@ -103,7 +103,7 @@ try:
             last_centroid = None
             persistence_count = 0 
          
-        cv2.imshow("Two-tiered detection", vis)
+        # cv2.imshow("Two-tiered detection", vis)
         if cv2.waitKey(1) & 0xFF == ord('x'): break
 finally:
     try:
