@@ -54,3 +54,27 @@ void H264Encoder::close()
 
     ffmpegPipe = nullptr;
 }
+
+std::string H264Encoder::buildCommand(const std::string& outputPath, int crf)
+{
+    std::ostringstream cmd;
+
+    cmd << "ffmpeg -y "
+        << "-f rawvideo -pix_fmt bgr24 "
+        << "-s " << width << "x" << height << " "
+        << "-r " << fps << " "
+        << "-i - ";
+
+#if defined(_WIN32)
+    cmd << "-c:v libx264 -preset ultrafast -crf " << crf;
+#else
+    if (useHardware)
+        cmd << "-c:v h264_v4l2m2m -b:v 2M ";
+    else
+        cmd << "-c:v libx264 -preset ultrafast -crf " << crf;
+#endif
+
+    cmd << " -pix_fmt yuv420p \"" << outputPath << "\"";
+
+    return cmd.str();
+}
