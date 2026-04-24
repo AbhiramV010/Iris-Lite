@@ -5,18 +5,23 @@
 #include <algorithm>
 #include <cmath>
 
+// ---------------- INIT ----------------
 ImportanceEngine::ImportanceEngine(int width, int height, const Config& cfg_)
     : w(width), h(height), cfg(cfg_)
 {
     logInfo("ImportanceEngine initialized");
 }
 
+// ---------------- NORMALIZATION ----------------
 static float norm(const cv::Mat& m)
 {
     return static_cast<float>(cv::mean(m)[0]) / 255.0f;
 }
 
-ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& prev)
+// ---------------- ANALYZE ----------------
+ImportanceSignal ImportanceEngine::analyze(
+    const cv::Mat& frame,
+    const cv::Mat& prev)
 {
     ImportanceSignal r{};
 
@@ -24,6 +29,8 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
         return r;
 
     cv::Mat gray, prevGray;
+
+    // downscale for performance
     cv::resize(frame, gray, cv::Size(w, h));
     cv::cvtColor(gray, gray, cv::COLOR_BGR2GRAY);
 
@@ -34,11 +41,20 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
 
         cv::Mat diff;
         cv::absdiff(gray, prevGray, diff);
-        cv::blur(diff, diff, cv::Size(5, 5));  // cheap
+
+        // smooth motion noise (NOT image blur)
+        cv::blur(diff, diff, cv::Size(5, 5));
+
         r.motion = norm(diff);
     }
 
-    r.global = std::clamp(0.8f * prevGlobal + 0.2f * r.motion, 0.0f, 1.0f);
+    // temporal smoothing (IMPORTANT)
+    r.global = std::clamp(
+        0.8f * prevGlobal + 0.2f * r.motion,
+        0.0f,
+        1.0f
+    );
+
     prevGlobal = r.global;
 
     return r;

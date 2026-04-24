@@ -2,7 +2,8 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <iostream>
+#include <thread>
+#include <chrono>
 #include "SharedMemoryConfig.hpp"
 
 static constexpr const char* SHM_DATA = "iris_frame_buffer_data";
@@ -18,12 +19,21 @@ bool SharedFrameBuffer::initialize()
 
 bool SharedFrameBuffer::mapMemory()
 {
-    fd_data = shm_open(SHM_DATA, O_RDONLY, 0666);
-    fd_sizes = shm_open(SHM_SIZES, O_RDONLY, 0666);
-    fd_head_tail = shm_open(SHM_HEAD, O_RDONLY, 0666);
+    // ---------------- RETRY OPEN ----------------
+    while ((fd_data = shm_open(SHM_DATA, O_RDONLY, 0666)) < 0)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
 
-    if (fd_data < 0 || fd_sizes < 0 || fd_head_tail < 0)
-        return false;
+    while ((fd_sizes = shm_open(SHM_SIZES, O_RDONLY, 0666)) < 0)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    while ((fd_head_tail = shm_open(SHM_HEAD, O_RDONLY, 0666)) < 0)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
 
     frame_buffer = (uint8_t*)mmap(nullptr,
         FRAME_BUFFER_SIZE * SLOT_SIZE,
@@ -37,40 +47,12 @@ bool SharedFrameBuffer::mapMemory()
         2 * sizeof(uint64_t),
         PROT_READ, MAP_SHARED, fd_head_tail, 0);
 
-    return frame_buffer != MAP_FAILED &&
-        frame_sizes != MAP_FAILED &&
-        head_tail != MAP_FAILED;
-}
-
-bool SharedFrameBuffer::isValid() const
-{
-    return frame_buffer && frame_sizes && head_tail;
-}
-
-uint64_t SharedFrameBuffer::getHead() const
-{
-    return head_tail ? head_tail[0] : 0;
-}
-
-uint64_t SharedFrameBuffer::getTail() const
-{
-    return head_tail ? head_tail[1] : 0;
-}
-
-bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& outJpeg)
-{
-    if (!isValid())
+    if (frame_buffer == MAP_FAILED ||
+        frame_sizes == MAP_FAILED ||
+        head_tail == MAP_FAILED)
+    {
         return false;
+    }
 
-    size_t slot = index % bufferSize;
-
-    uint32_t size = frame_sizes[slot];
-
-    if (size == 0 || size > slotSize)
-        return false;
-
-    uint8_t* ptr = frame_buffer + slot * slotSize;
-
-    outJpeg.assign(ptr, ptr + size);
     return true;
 }

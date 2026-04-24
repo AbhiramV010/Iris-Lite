@@ -1,9 +1,13 @@
 #include "H264Encoder.hpp"
 #include "logging.hpp"
+
 #include <sstream>
+#include <sys/stat.h>
+#include <cstdlib>
 
 H264Encoder::H264Encoder(int w, int h, int fps, bool hw)
-    : width(w), height(h), fps(fps), useHardware(hw) {
+    : width(w), height(h), fps(fps), useHardware(hw)
+{
 }
 
 H264Encoder::~H264Encoder()
@@ -11,19 +15,27 @@ H264Encoder::~H264Encoder()
     close();
 }
 
+// ---------------- OPEN ----------------
 bool H264Encoder::open(const std::string& path, int crf)
 {
     currentCRF = crf;
     ffmpegCommand = buildCommand(path, crf);
 
+    // ensure directory exists
+    system("mkdir -p ./clips");
+
     ffmpegPipe = popen(ffmpegCommand.c_str(), "w");
 
     if (!ffmpegPipe)
+    {
+        logError("FFmpeg pipe failed to open");
         return false;
+    }
 
     return true;
 }
 
+// ---------------- WRITE FRAME ----------------
 bool H264Encoder::writeFrame(const cv::Mat& frame)
 {
     if (!ffmpegPipe || frame.empty())
@@ -37,9 +49,11 @@ bool H264Encoder::writeFrame(const cv::Mat& frame)
 
     size_t bytes = bgr.total() * bgr.elemSize();
 
-    if (fwrite(bgr.data, 1, bytes, ffmpegPipe) != bytes)
+    size_t written = fwrite(bgr.data, 1, bytes, ffmpegPipe);
+
+    if (written != bytes)
     {
-        logError("FFmpeg write failed");
+        logError("FFmpeg write failed — closing encoder");
         close();
         return false;
     }
@@ -47,14 +61,17 @@ bool H264Encoder::writeFrame(const cv::Mat& frame)
     return true;
 }
 
+// ---------------- CLOSE ----------------
 void H264Encoder::close()
 {
     if (ffmpegPipe)
+    {
         pclose(ffmpegPipe);
-
-    ffmpegPipe = nullptr;
+        ffmpegPipe = nullptr;
+    }
 }
 
+// ---------------- COMMAND BUILDER ----------------
 std::string H264Encoder::buildCommand(const std::string& outputPath, int crf)
 {
     std::ostringstream cmd;

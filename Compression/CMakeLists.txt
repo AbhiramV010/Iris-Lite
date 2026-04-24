@@ -7,10 +7,29 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ---------------- PERFORMANCE FLAGS (Pi-optimized) ----------------
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffast-math")
+# ---------------- DEFAULT BUILD TYPE ----------------
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
 
-# ---------------- FIND OPENV ----------------
+# ---------------- PI 4B OPTIMIZED FLAGS ----------------
+set(CMAKE_CXX_FLAGS_RELEASE
+    "-O3 -mcpu=cortex-a72 -mfpu=neon-fp-armv8 -mfloat-abi=hard"
+)
+
+set(CMAKE_CXX_FLAGS_DEBUG
+    "-O0 -g -Wall -Wextra"
+)
+
+# NOTE:
+# - NO -ffast-math (keeps perceptual scoring stable)
+# - explicit Cortex-A72 tuning (Pi 4 CPU)
+# - NEON enabled explicitly for OpenCV ops
+
+# ---------------- THREAD SUPPORT ----------------
+find_package(Threads REQUIRED)
+
+# ---------------- OPENCV ----------------
 find_package(OpenCV REQUIRED)
 
 # ---------------- INCLUDE PATHS ----------------
@@ -38,11 +57,16 @@ add_executable(PerceptualCompressor ${SOURCES})
 # ---------------- LINK LIBRARIES ----------------
 target_link_libraries(PerceptualCompressor
     ${OpenCV_LIBS}
-    pthread
+    Threads::Threads
     rt
 )
 
-# ---------------- STATUS OUTPUT ----------------
+# ---------------- OPTIONAL: STRIP IN RELEASE ----------------
+set_target_properties(PerceptualCompressor PROPERTIES
+    LINK_FLAGS_RELEASE "-s"
+)
+
+# ---------------- STATUS ----------------
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "System: ${CMAKE_SYSTEM_NAME}")

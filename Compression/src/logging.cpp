@@ -20,7 +20,7 @@ void logInfo(const std::string& msg)
 {
     std::cout << "[" << getCurrentTimestamp() << "] [INFO] " << msg << std::endl;
 }
-
+ed
 void logWarn(const std::string& msg)
 {
     std::cerr << "[" << getCurrentTimestamp() << "] [WARN] " << msg << std::endl;
