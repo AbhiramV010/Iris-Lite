@@ -12,6 +12,9 @@ ImportanceEngine::ImportanceEngine(int width, int height, const Config& cfg_)
     logInfo("ImportanceEngine initialized");
 }
 
+// ---------------- DESTRUCTOR (FIX LINKER ERROR) ----------------
+ImportanceEngine::~ImportanceEngine() = default;
+
 // ---------------- NORMALIZATION ----------------
 static float norm(const cv::Mat& m)
 {
@@ -30,7 +33,7 @@ ImportanceSignal ImportanceEngine::analyze(
 
     cv::Mat gray, prevGray;
 
-    // downscale for performance
+    // Downscale for Pi efficiency
     cv::resize(frame, gray, cv::Size(w, h));
     cv::cvtColor(gray, gray, cv::COLOR_BGR2GRAY);
 
@@ -42,13 +45,13 @@ ImportanceSignal ImportanceEngine::analyze(
         cv::Mat diff;
         cv::absdiff(gray, prevGray, diff);
 
-        // smooth motion noise (NOT image blur)
+        // smooth noise (motion stability)
         cv::blur(diff, diff, cv::Size(5, 5));
 
         r.motion = norm(diff);
     }
 
-    // temporal smoothing (IMPORTANT)
+    // temporal smoothing (prevents flicker)
     r.global = std::clamp(
         0.8f * prevGlobal + 0.2f * r.motion,
         0.0f,
