@@ -1,155 +1,143 @@
-#include "CompressionEngine.hpp"
-#include "SharedMemoryConfig.hpp"
+#include "ImportanceEngine.hpp"
 #include "logging.hpp"
 
-#include <opencv2/opencv.hpp>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/objdetect.hpp>
+#include <algorithm>
+#include <cmath>
 
-// ---------------- TIME FIX (NO std::format) ----------------
-static std::string timestamp()
+ImportanceEngine::ImportanceEngine(int width, int height, const Config& cfg_)
+    : w(width), h(height), cfg(cfg_)
 {
-    auto now = std::chrono::system_clock::now();
-    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    logInfo("ImportanceEngine initialized");
 
-    std::ostringstream oss;
-    oss << std::put_time(std::localtime(&t), "%Y-%m-%d_%H-%M-%S");
-    return oss.str();
-}
-
-// ---------------- INIT ----------------
-
-bool CompressionEngine::initialize(const Config& cfg)
-{
-    importance = std::make_unique<ImportanceEngine>(
-        cfg.perceptualWidth,
-        cfg.perceptualHeight,
-        cfg
-    );
-
-    policy = std::make_unique<CompressionPolicy>();
-
-    Encoder = std::make_unique<H264Encoder>(
-        cfg.encodeWidth,
-        cfg.encodeHeight,
-        cfg.fps,
-        true
-    );
-
-    sharedBuffer = std::make_unique<SharedFrameBuffer>();
-    if (!sharedBuffer->initialize())
-        return false;
-
-    running = true;
-    stopWorker = false;
-
-    worker = std::thread(&CompressionEngine::workerLoop, this);
-
-    return true;
-}
-
-// ---------------- ENQUEUE ----------------
-
-void CompressionEngine::enqueueEvent(const EventWindow& event)
-{
+    if (cfg.useFaces)
     {
-        std::lock_guard<std::mutex> lock(eventMutex);
-        eventQueue.push(event);
+        faceCascade.load("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml");
+        if (faceCascade.empty())
+            logError("Failed to load Haar cascade");
     }
-    cv.notify_one();
 }
 
-// ---------------- WORKER LOOP ----------------
-
-void CompressionEngine::workerLoop()
+static float normMean(const cv::Mat& m)
 {
-    while (!stopWorker)
-    {
-        EventWindow event;
+    return static_cast<float>(cv::mean(m)[0]) / 255.0f;
+}
 
+ImportanceSignal ImportanceEngine::analyze(
+    const cv::Mat& frame,
+    const cv::Mat& prev,
+    float load
+)
+{
+    ImportanceSignal r{};
+
+    if (frame.empty())
+        return r;
+
+    // -------- PREPROCESS --------
+    cv::Mat resized, gray;
+    cv::resize(frame, resized, cv::Size(w, h));
+    cv::cvtColor(resized, gray, cv::COLOR_BGR2GRAY);
+
+    cv::Mat prevResized, prevGray;
+    const cv::Mat& safePrev = prev.empty() ? frame : prev;
+
+    cv::resize(safePrev, prevResized, cv::Size(w, h));
+    cv::cvtColor(prevResized, prevGray, cv::COLOR_BGR2GRAY);
+
+    // -------- ADAPTIVE MODES --------
+    bool useEdges = false;
+    bool useFaces = false;
+
+    if (load < 0.7f)
+    {
+        // FULL MODE
+        useEdges = true;
+        useFaces = true;
+    }
+    else if (load < 1.2f)
+    {
+        // MID MODE
+        useEdges = true;
+        useFaces = false;
+    }
+    else
+    {
+        // LIGHT MODE
+        useEdges = false;
+        useFaces = false;
+    }
+
+    // -------- MOTION (always on) --------
+    if (cfg.useMotion)
+    {
+        cv::Mat diff;
+        cv::absdiff(gray, prevGray, diff);
+
+        // cheaper than Gaussian
+        cv::blur(diff, diff, cv::Size(5, 5));
+
+        r.motion = normMean(diff);
+    }
+
+    // -------- EDGES (conditional) --------
+    if (cfg.useEdges && useEdges)
+    {
+        cv::Mat gradX, gradY, mag;
+
+        cv::Sobel(gray, gradX, CV_32F, 1, 0);
+        cv::Sobel(gray, gradY, CV_32F, 0, 1);
+        cv::magnitude(gradX, gradY, mag);
+
+        r.edges = std::tanh(normMean(mag) * 2.5f);
+    }
+
+    // -------- FACES (conditional + throttled) --------
+    if (cfg.useFaces && useFaces && !faceCascade.empty())
+    {
+        static int counter = 0;
+        counter++;
+
+        // throttle heavily (expensive)
+        if (counter % 15 == 0)
         {
-            std::unique_lock<std::mutex> lock(eventMutex);
+            cv::Mat small;
+            cv::resize(gray, small, cv::Size(w / 2, h / 2));
 
-            cv.wait(lock, [&] {
-                return stopWorker || !eventQueue.empty();
-                });
+            std::vector<cv::Rect> faces;
+            faceCascade.detectMultiScale(small, faces);
 
-            if (stopWorker)
-                return;
+            float score = 0.0f;
 
-            event = eventQueue.front();
-            eventQueue.pop();
+            for (auto& f : faces)
+            {
+                f.x *= 2;
+                f.y *= 2;
+                f.width *= 2;
+                f.height *= 2;
+
+                float area = (f.width * f.height) / float(w * h);
+                score += area;
+            }
+
+            r.faces = std::tanh(score * 3.0f);
         }
-
-        processEvent(event);
-    }
-}
-
-// ---------------- EVENT PROCESSING ----------------
-
-void CompressionEngine::processEvent(const EventWindow& event)
-{
-    std::string path =
-        "/clipDrive/clips/iris_lite--" + timestamp() + ".mp4";
-
-    startNewSegment(path, currentCRF);
-
-    cv::Mat prev;
-
-    for (uint64_t i = event.startFrame; i < event.endFrame; i++)
-    {
-        std::vector<uint8_t> jpeg;
-
-        if (!sharedBuffer->getFrame(i, jpeg))
-            continue;
-
-        cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
-        if (frame.empty())
-            continue;
-
-        auto signal = importance->analyze(frame, prev);
-
-        importanceState = 0.9f * importanceState + 0.1f * signal.global;
-        momentum = 0.85f * momentum + 0.15f * importanceState;
-
-        bool keep = policy->shouldKeepFrame(
-            importanceState,
-            momentum,
-            i
-        );
-
-        if (keep && Encoder->isOpen())
-            Encoder->writeFrame(frame);
-
-        prev = frame;
     }
 
-    if (Encoder->isOpen())
-        Encoder->close();
-}
+    // -------- GLOBAL FUSION --------
+    float raw =
+        0.5f * r.motion +
+        0.3f * r.edges +
+        0.2f * r.faces;
 
-// ---------------- SEGMENT ----------------
+    // smoothing (prevents jitter)
+    r.global = 0.85f * prevGlobal + 0.15f * raw;
+    prevGlobal = r.global;
 
-void CompressionEngine::startNewSegment(const std::string& fileName, int crf)
-{
-    if (Encoder->isOpen())
-        Encoder->close();
+    r.global = std::clamp(r.global, 0.0f, 1.0f);
 
-    if (!Encoder->open(fileName, crf))
-        running = false;
-}
+    r.confidence = 1.0f - std::abs(r.global - raw);
 
-// ---------------- SHUTDOWN ----------------
-
-void CompressionEngine::shutdown()
-{
-    stopWorker = true;
-    cv.notify_all();
-
-    if (worker.joinable())
-        worker.join();
-
-    if (Encoder)
-        Encoder->close();
+    return r;
 }

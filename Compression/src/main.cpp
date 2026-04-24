@@ -49,13 +49,16 @@ int main()
         uint64_t end = shared->endFrame;
 
         if (start == 0 && end == 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
-
-        if (start == end)
-            continue;
+        }
 
         if (start == lastStart && end == lastEnd)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
+        }
 
         lastStart = start;
         lastEnd = end;

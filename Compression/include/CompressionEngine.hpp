@@ -33,19 +33,20 @@ private:
     void processEvent(const EventWindow& event);
     void startNewSegment(const std::string& fileName, int crf);
 
+    float getSystemLoad();
+
 private:
     std::atomic<bool> running{ false };
 
     std::unique_ptr<ImportanceEngine> importance;
     std::unique_ptr<CompressionPolicy> policy;
-    std::unique_ptr<H264Encoder> Encoder;
+    std::unique_ptr<H264Encoder> encoder;
     std::unique_ptr<SharedFrameBuffer> sharedBuffer;
 
     float importanceState = 0.5f;
     float momentum = 0.5f;
 
     int currentCRF = 28;
-    int segmentIndex = 0;
 
     std::queue<EventWindow> eventQueue;
     std::mutex eventMutex;
