@@ -12,7 +12,7 @@ ImportanceEngine::ImportanceEngine(int width, int height, const Config& cfg_)
     logInfo("ImportanceEngine initialized");
 
     if (cfg.useFaces)
-        faceCascade.load("data/haarcascade_frontalface_default.xml");
+        faceCascade.load("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml");
 }
 
 ImportanceEngine::~ImportanceEngine() {}
@@ -45,7 +45,7 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
         cv::Mat diff;
         cv::absdiff(gray, prevGray, diff);
 
-        // 🔥 CHANGE: GaussianBlur → box blur (faster, Pi-friendly)
+        
         cv::blur(diff, diff, cv::Size(5, 5));
 
         r.motion = normalizeMatMean(diff);
