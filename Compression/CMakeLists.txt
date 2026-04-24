@@ -1,35 +1,48 @@
 ﻿cmake_minimum_required(VERSION 3.16)
+
 project(PerceptualCompressor LANGUAGES CXX)
 
+# ---------------- C++ STANDARD ----------------
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
+# ---------------- PERFORMANCE FLAGS (Pi-optimized) ----------------
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffast-math")
+
+# ---------------- FIND OPENV ----------------
 find_package(OpenCV REQUIRED)
 
-add_executable(PerceptualCompressor
+# ---------------- INCLUDE PATHS ----------------
+include_directories(
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/config/external
+    ${OpenCV_INCLUDE_DIRS}
+)
+
+# ---------------- SOURCE FILES ----------------
+set(SOURCES
     src/main.cpp
     src/CompressionEngine.cpp
-    src/Utils.cpp
-    src/logging.cpp
+    src/CompressionPolicy.cpp
     src/Config.cpp
     src/H264encoder.cpp
     src/ImportanceEngine.cpp
-    src/CompressionPolicy.cpp
-    src/FrameWindowBuffer.cpp
-    src/EventMemory.cpp
     src/SharedFrameBuffer.cpp
+    src/logging.cpp
 )
 
-target_include_directories(PerceptualCompressor PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/external
-)
+# ---------------- EXECUTABLE ----------------
+add_executable(PerceptualCompressor ${SOURCES})
 
-target_link_libraries(PerceptualCompressor PRIVATE
+# ---------------- LINK LIBRARIES ----------------
+target_link_libraries(PerceptualCompressor
     ${OpenCV_LIBS}
     pthread
     rt
 )
 
+# ---------------- STATUS OUTPUT ----------------
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-message(STATUS "Build system: ${CMAKE_SYSTEM_NAME}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "System: ${CMAKE_SYSTEM_NAME}")
