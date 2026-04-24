@@ -39,12 +39,15 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
     cv::resize(safePrev, prevResized, cv::Size(w, h));
     cv::cvtColor(prevResized, prevGray, cv::COLOR_BGR2GRAY);
 
-    // -------- MOTION --------
+    // -------- MOTION (OPTIMIZED FOR PI) --------
     if (cfg.useMotion)
     {
         cv::Mat diff;
         cv::absdiff(gray, prevGray, diff);
-        cv::GaussianBlur(diff, diff, cv::Size(5, 5), 0);
+
+        // 🔥 CHANGE: GaussianBlur → box blur (faster, Pi-friendly)
+        cv::blur(diff, diff, cv::Size(5, 5));
+
         r.motion = normalizeMatMean(diff);
     }
 
@@ -59,7 +62,7 @@ ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame, const cv::Mat& 
         r.edges = std::tanh(normalizeMatMean(mag) * 2.5f);
     }
 
-    // -------- FACES (OPTIMIZED) --------
+    // -------- FACES --------
     if (cfg.useFaces && !faceCascade.empty())
     {
         static int counter = 0;
