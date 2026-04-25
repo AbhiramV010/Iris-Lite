@@ -7,9 +7,13 @@ import datetime
 from collections import deque
 from sensor_helper import *
 import sys
+import time
 
 W, H = 1920, 1080
 SHM_NAME = "iris_live_frame" # pull from the shm
+
+TARGET_FPS = 15
+FRAME_INTERVAL = 1.0 / TARGET_FPS
 
 overlap_history = deque(maxlen=10)
 is_overlapping = False
@@ -83,18 +87,22 @@ grass_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
 if grass_zones:
     cv2.drawContours(grass_mask, grass_zones, -1, 255, thickness=-1)
 
+morphology_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+
 try:
     try: 
         start_up(17)
         start_up(27)
     except: pass
     while True:
+        loop_start = time.monotonic()
+
         frame_raw = shared_frame.copy()
         frame = cv2.resize(frame_raw, (640, 360))
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         fgmask = fgbg.apply(frame)
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, morphology_kernel)
         contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         contours = sorted(contours,key=cv2.contourArea,reverse=True)[:3]
         bottom_mask = np.zeros_like(fgmask)
@@ -114,6 +122,11 @@ try:
                     conn.send(alert)
             except: pass
         if cv2.waitKey(1) & 0xFF == ord('x'): break
+
+        elapsed = time.monotonic() - loop_start
+        sleep_time = FRAME_INTERVAL - elapsed
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 finally:
     try:
         close_gpio(17)
