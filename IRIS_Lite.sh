@@ -28,7 +28,7 @@ sleep 1 && draw_bar 4
 uxterm -T "Zone Monitor" -e "python3 ./Decision/zone_monitor.py" & 
 sleep 1 && draw_bar 5
 
-uxterm -T "Compression System" -e "bash -c 'cd $HOME/Iris-Lite/Compression && ./build/PerceptualCompressor; exec bash'" &
+uxterm -T "Compression System" -e "bash -c 'cd $HOME/Iris-Lite/Compression/build && make && ../build/PerceptualCompressor; exec bash'" &
 sleep 1 && draw_bar 6
 
 echo -e "\nAll systems started."
