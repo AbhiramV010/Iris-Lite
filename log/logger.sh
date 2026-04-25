@@ -6,8 +6,8 @@
 processes=("zone_monitor.py" "main.py" "PerceptualCompressor" "detector_pipeline.py" "startCamera.py")
 
 # CSV files for logging
-cpu_log_file="cpu_usage.csv"
-ram_log_file="ram_usage.csv"
+cpu_log_file="/mnt/clipDrive/cpu_usage.csv"
+ram_log_file="/mnt/clipDrive/ram_usage.csv"
 
 # Create/clear log files and add header
 echo "Timestamp,Process,CPU_Usage" > $cpu_log_file
