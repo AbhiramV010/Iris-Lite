@@ -33,12 +33,19 @@ def findEvents():
 buffer_lock = threading.Lock()
 
 if __name__ == "__main__":
-    ctypes.CDLL("libc.so.6").mlockall(1 | 2) 
+    while True:
+        try:
+            shm = shared_memory.SharedMemory(name=SHM_NAME)
+            break
+        except FileNotFoundError:
+                time.sleep(0.5)
       
     event_thread = threading.Thread(target=findEvents, daemon=True)
     event_thread.start()
 
-    shm = shared_memory.SharedMemory(name=SHM_NAME)
+    try: shm = shared_memory.SharedMemory(name=SHM_NAME)
+    except FileNotFoundError: shm = shared_memory.SharedMemory(name=SHM_NAME, create=True, size=1920 * 1080 * 3)
+
     stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
 
     shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", CONCERN_SHM, SHM_NAME_INDICE]
