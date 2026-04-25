@@ -79,6 +79,7 @@ if __name__ == "__main__":
                 
                 concern_indices[0] = (curr_head - int((now - start_ts) * FPS)) % FRAME_BUFFER_SIZE
                 concern_indices[1] = (curr_head - int((now - end_ts) * FPS)) % FRAME_BUFFER_SIZE
+                print(f"concern_indices written: {concern_indices[0]} {concern_indices[1]}")
             except: pass
 
         _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 20])
