@@ -6,6 +6,7 @@ from multiprocessing.connection import Client
 from multiprocessing import shared_memory
 from sensor_helper import *
 import sys
+import time
 
 W, H = 1920, 1080
 SHM_NAME = "iris_live_frame" # pull from the shm
@@ -38,7 +39,8 @@ def calculate_entropy(roi):
 
 def tier1Actions(frame):
     global last_avg_lum
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    small = cv2.resize(frame, (640, 360))
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
     curr = np.mean(gray)
     
     if last_avg_lum is None: 
@@ -49,7 +51,7 @@ def tier1Actions(frame):
     last_avg_lum = (ALPHA * curr) + ((1 - ALPHA) * last_avg_lum)
 
     mask = fgbg.apply(gray)
-    motion = (cv2.countNonZero(mask) / (640*480)) > SENSITIVITY
+    motion = (cv2.countNonZero(mask) / (640*360)) > SENSITIVITY
     
     return (triggered or motion), gray, mask
 
@@ -61,7 +63,6 @@ try:
         pass
 
     while True:   
-        vis = shared_frame.copy() # safety copy
         is_triggered, gray, mask = tier1Actions(shared_frame) 
 
         if is_triggered:
@@ -73,7 +74,6 @@ try:
                 main_obj = max(contours, key=cv2.contourArea)
                 x, y, w, h = cv2.boundingRect(main_obj)
                 current_centroid = (x + w//2, y + h//2)
-                color = (0, 255, 0) 
                  
                 if last_centroid:
                     dist = np.sqrt((current_centroid[0]-last_centroid[0])**2 + (current_centroid[1]-last_centroid[1])**2)
@@ -81,10 +81,8 @@ try:
                         persistence_count += 1
                     else:
                         persistence_count = max(0, persistence_count - 1)
-                        color = (0, 0, 255) 
                          
                 last_centroid = current_centroid
-                cv2.circle(vis, current_centroid, 10, color, -1)
 
                 if persistence_count >= 50: 
                     new_capture = CaptureClass(
@@ -98,12 +96,10 @@ try:
                     except:
                         raise ConnectionRefusedError("The sending of CaptureClass failed")
         else:
-            if last_centroid:
-                cv2.circle(vis, last_centroid, 10, (0, 0, 255), -1) 
             last_centroid = None
             persistence_count = 0 
          
-        # cv2.imshow("Two-tiered detection", vis)
+        time.sleep(0.05)
         if cv2.waitKey(1) & 0xFF == ord('x'): break
 finally:
     try:
