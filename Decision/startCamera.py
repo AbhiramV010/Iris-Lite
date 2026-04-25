@@ -27,8 +27,12 @@ def init_camera():
 if __name__ == "__main__":
     prev_zone = None
     
-    old_shm = shared_memory.SharedMemory(name=SHM_NAME)
-    old_shm.unlink()
+    try:
+        old_shm = shared_memory.SharedMemory(name=SHM_NAME)
+        old_shm.close()
+        old_shm.unlink()
+    except FileNotFoundError:
+        pass 
 
     cap = init_camera()
 
