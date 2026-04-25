@@ -63,6 +63,8 @@ int main()
     {
         uint64_t start = shared->startFrame;
         uint64_t end = shared->endFrame;
+        
+        
 
         // no data → sleep (IMPORTANT for CPU)
         if (start == 0 && end == 0)
@@ -79,6 +81,8 @@ int main()
 
         lastStart = start;
         lastEnd = end;
+
+        logInfo("Frame indices received");
 
         EventWindow event{ start, end, "external" };
         engine.enqueueEvent(event);
