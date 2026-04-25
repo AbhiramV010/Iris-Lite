@@ -68,6 +68,10 @@ if __name__ == "__main__":
     while True:
         t_start = time.time()
 
+        cv2.imshow("Iris-Lite Camera Feed", stream_view)
+        if cv2.waitKey(1) & 0xFF == ord('x'):
+            break
+
         if capture_queue:
             event = capture_queue.pop(0)
             now = time.time()
