@@ -4,6 +4,7 @@ from multiprocessing import shared_memory
 from multiprocessing.connection import Listener
 import threading
 import time
+import datetime
 from captureinfo import CaptureClass
 
 FPS = 24  
@@ -66,13 +67,14 @@ if __name__ == "__main__":
 
     while True:
         t_start = time.time()
-
+    
         if capture_queue:
             event = capture_queue.pop(0)
             now = time.time()
             try:
-                start_ts = float(event.startTime)
-                end_ts = float(event.endTime)
+                today = datetime.date.today()
+                start_ts = datetime.datetime.combine(today, datetime.time.fromisoformat(event.startTime)).timestamp()
+                end_ts = datetime.datetime.combine(today, datetime.time.fromisoformat(event.endTime)).timestamp()
                 curr_head = int(head_tail[0])
                 
                 concern_indices[0] = (curr_head - int((now - start_ts) * FPS)) % FRAME_BUFFER_SIZE
