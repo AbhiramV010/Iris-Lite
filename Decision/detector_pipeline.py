@@ -7,7 +7,7 @@ from multiprocessing import shared_memory
 from sensor_helper import *
 import sys
 
-W, H = 640, 480
+W, H = 1920, 1080
 SHM_NAME = "iris_live_frame" # pull from the shm
 
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
