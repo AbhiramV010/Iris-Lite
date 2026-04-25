@@ -14,8 +14,6 @@ echo "Starting Iris Lite"
 draw_bar 0
 
 
-python3 ./Decision/main.py
-
 uxterm -T "TOP" -e "top"
 
 uxterm -T "Camera Utility" -e "python3 ./Decision/startCamera.py" & 
