@@ -1,49 +1,33 @@
 #!/bin/bash
-# IRIS-Lite Performance Logger (Saves to USB)
 
-# Path to your mounted USB
-USB_PATH="clipDrive"
+# Monitor CPU and RAM usage for specified processes
 
-# Ensure the directory exists before writing
-mkdir -p "$USB_PATH"
+# Processes to monitor
+processes=("zone_monitor.py" "main.py" "PerceptualCompressor" "detector_pipeline.py" "startCamera.py")
 
-# Create headers for 3 separate CSVs on the USB
-echo "Timestamp,Script,CPU_Percent,RAM_MB" > "$USB_PATH/process_stats.csv"
-echo "Timestamp,Temp_C" > "$USB_PATH/system_temps.csv"
-echo "Timestamp,Total_RAM_Used_MB,Swap_Used_MB" > "$USB_PATH/system_ram_usage.csv"
+# CSV files for logging
+cpu_log_file="cpu_usage.csv"
+ram_log_file="ram_usage.csv"
 
-SCRIPTS=("listener.py" "detector_pipeline.py" "zone_monitor.py" "main.py" "startCamera.py")
+# Create/clear log files and add header
+echo "Timestamp,Process,CPU_Usage" > $cpu_log_file
+echo "Timestamp,Process,RAM_Usage" > $ram_log_file
 
-# End time (10 minutes = 600 seconds)
-end=$((SECONDS + 600))
-
-echo "Logging started. Sit tight for 10 minutes..."
-echo "Data is being saved to: $(pwd)/$USB_PATH"
-
-while [ $SECONDS -lt $end ]; do
-    TIMESTAMP=$(date +"%H:%M:%S")
+while true; do
+    current_time=$(date -u +"%Y-%m-%d %H:%M:%S")
     
-    # 1. Per-Process Stats
-    for SCRIPT in "${SCRIPTS[@]}"; do
-        PID=$(pgrep -f "$SCRIPT" | head -n 1)
-        if [ -n "$PID" ]; then
-            STATS=$(ps -p "$PID" -o %cpu,rss --no-headers)
-            CPU=$(echo $STATS | awk '{print $1}')
-            RAM_KB=$(echo $STATS | awk '{print $2}')
-            RAM_MB=$(echo "scale=2; $RAM_KB / 1024" | bc)
-            echo "$TIMESTAMP,$SCRIPT,$CPU,$RAM_MB" >> "$USB_PATH/process_stats.csv"
+    for process in "${processes[@]}"; do
+        # Get CPU usage
+        cpu_usage=$(ps -C $process -o %cpu=)
+        # Get RAM usage
+        ram_usage=$(ps -C $process -o %mem=)
+        
+        if [ -n "$cpu_usage" ]; then
+            echo "$current_time,$process,$cpu_usage" >> $cpu_log_file
+        fi
+        if [ -n "$ram_usage" ]; then
+            echo "$current_time,$process,$ram_usage" >> $ram_log_file
         fi
     done
-
-    # 2. System Temperature
-    TEMP=$(vcgencmd measure_temp | tr -d "temp='" | tr -d "'C")
-    echo "$TIMESTAMP,$TEMP" >> "$USB_PATH/system_temps.csv"
-
-    # 3. Combined RAM and Swap
-    MEM_LINE=$(free -m | awk 'NR==2{used_ram=$3} NR==3{used_swap=$3; print used_ram "," used_swap}')
-    echo "$TIMESTAMP,$MEM_LINE" >> "$USB_PATH/system_ram_usage.csv"
-
-    sleep 10
+    sleep 60  # Adjust monitoring interval as needed
 done
-
-echo "Done! You can now unplug the USB and move the CSVs to Excel."
