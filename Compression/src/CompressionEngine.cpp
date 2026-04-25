@@ -83,10 +83,9 @@ void CompressionEngine::workerLoop()
 }
 
 // ---------------- PROCESS EVENT ----------------
-void CompressionEngine::processEvent(const EventWindow& event)
-{
-    std::string path = "/media/pi/clipDrive/clips" + std::to_string(event.startFrame) + ".mp4";
-
+void CompressionEngine::processEvent(const EventWindow& event) {
+    std::string path = "/mnt/clipDrive/clips/" + std::to_string(event.startFrame) + ".mp4";
+    
     int adaptiveCRF = policy->computeCRF(
         importanceState,
         momentum,
