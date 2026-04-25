@@ -11,6 +11,9 @@ import time
 W, H = 1920, 1080
 SHM_NAME = "iris_live_frame" # pull from the shm
 
+TARGET_FPS = 15
+FRAME_INTERVAL = 1.0 / TARGET_FPS
+
 fgbg = cv2.bgsegm.createBackgroundSubtractorCNT()
 try:
     shm = shared_memory.SharedMemory(name=SHM_NAME)
@@ -39,10 +42,9 @@ def calculate_entropy(roi):
 
 def tier1Actions(frame):
     global last_avg_lum
-    small = cv2.resize(frame, (640, 360))
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     curr = np.mean(gray)
-    
+
     if last_avg_lum is None: 
         last_avg_lum = curr
         return False, gray, None
@@ -51,8 +53,8 @@ def tier1Actions(frame):
     last_avg_lum = (ALPHA * curr) + ((1 - ALPHA) * last_avg_lum)
 
     mask = fgbg.apply(gray)
-    motion = (cv2.countNonZero(mask) / (640*360)) > SENSITIVITY
-    
+    motion = (cv2.countNonZero(mask) / (640*480)) > SENSITIVITY
+
     return (triggered or motion), gray, mask
 
 try: 
@@ -62,27 +64,34 @@ try:
     except:
         pass
 
-    while True:   
-        is_triggered, gray, mask = tier1Actions(shared_frame) 
+    while True:
+        loop_start = time.monotonic()
+
+        vis = shared_frame.copy() # safety copy
+        frame_small = cv2.resize(vis, (640, 360))
+        is_triggered, gray, mask = tier1Actions(frame_small)
 
         if is_triggered:
             roi = gray[mask > 0] if np.any(mask) else np.array([])
             entropy_val = calculate_entropy(roi) if roi.size > 0 else 0
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
+
             if entropy_val > 3.0 and contours:
                 main_obj = max(contours, key=cv2.contourArea)
                 x, y, w, h = cv2.boundingRect(main_obj)
                 current_centroid = (x + w//2, y + h//2)
-                 
+                color = (0, 255, 0) 
+
                 if last_centroid:
                     dist = np.sqrt((current_centroid[0]-last_centroid[0])**2 + (current_centroid[1]-last_centroid[1])**2)
                     if dist > 20: 
                         persistence_count += 1
                     else:
                         persistence_count = max(0, persistence_count - 1)
-                         
+                        color = (0, 0, 255) 
+
                 last_centroid = current_centroid
+                cv2.circle(vis, current_centroid, 10, color, -1)
 
                 if persistence_count >= 50: 
                     new_capture = CaptureClass(
@@ -96,15 +105,21 @@ try:
                     except:
                         raise ConnectionRefusedError("The sending of CaptureClass failed")
         else:
+            if last_centroid:
+                cv2.circle(vis, last_centroid, 10, (0, 0, 255), -1) 
             last_centroid = None
             persistence_count = 0 
-         
-        time.sleep(0.05)
+
+        cv2.imshow("Two-tiered detection", vis)
         if cv2.waitKey(1) & 0xFF == ord('x'): break
+
+        elapsed = time.monotonic() - loop_start
+        sleep_time = FRAME_INTERVAL - elapsed
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 finally:
     try:
         close_gpio(17)
         close_gpio(27)
     except: pass
     shm.close()
-    cv2.destroyAllWindows()

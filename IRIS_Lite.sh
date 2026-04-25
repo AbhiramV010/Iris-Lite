@@ -16,6 +16,9 @@ draw_bar 0
 uxterm -T "TOP" -e "top" & 
 sleep 1 && draw_bar 1
 
+uxterm -T "Main Tool" -e "python3 ./Decision/main.py" & 
+sleep 1 && draw_bar 1
+
 uxterm -T "Camera Utility" -e "python3 ./Decision/startCamera.py" & 
 sleep 1 && draw_bar 2
 
@@ -28,7 +31,7 @@ sleep 1 && draw_bar 4
 uxterm -T "Zone Monitor" -e "python3 ./Decision/zone_monitor.py" & 
 sleep 1 && draw_bar 5
 
-uxterm -T "Compression System" -e "bash -c 'cd $HOME/Iris-Lite/Compression && ./build/PerceptualCompressor; exec bash'" &
+uxterm -T "Compression System" -e "bash -c 'cd $HOME/Iris-Lite/Compression/build && make && ../build/PerceptualCompressor; exec bash'" &
 sleep 1 && draw_bar 6
 
 echo -e "\nAll systems started."
