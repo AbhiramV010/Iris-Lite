@@ -112,7 +112,6 @@ void CompressionEngine::processEvent(const EventWindow& event)
         if (frame.empty())
             continue;
 
-        // ✅ FIXED: correct function signature
         ImportanceSignal signal = importance->analyze(frame, prev);
 
         // smoothing
