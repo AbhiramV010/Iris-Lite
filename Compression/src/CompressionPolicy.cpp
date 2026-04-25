@@ -20,7 +20,7 @@ bool CompressionPolicy::shouldKeepFrame(float importance,
     // temporal adaptation (slight relaxation over time)
     float temporalBias = computeTemporalBias(frameIndex);
 
-    float threshold = 0.55f - temporalBias;
+    float threshold = 0.15f - temporalBias;
 
     return boosted > threshold;
 }

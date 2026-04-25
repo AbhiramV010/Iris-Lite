@@ -10,7 +10,7 @@ from captureinfo import CaptureClass
 FPS = 24  
 BUFFER_MINUTES = 5 
 FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
-SLOT_SIZE = 95000
+SLOT_SIZE = 150000
 SHM_NAME = "iris_live_frame"
 SHM_NAME_INDICE = "iris_indices"
 CONCERN_SHM = "iris_concern_indices"
@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
     while True:
         t_start = time.time()
-    
+
         if capture_queue:
             event = capture_queue.pop(0)
             now = time.time()
@@ -76,15 +76,21 @@ if __name__ == "__main__":
                 start_ts = datetime.datetime.combine(today, datetime.time.fromisoformat(event.startTime)).timestamp()
                 end_ts = datetime.datetime.combine(today, datetime.time.fromisoformat(event.endTime)).timestamp()
                 curr_head = int(head_tail[0])
-                
-                concern_indices[0] = (curr_head - int((now - start_ts) * FPS)) % FRAME_BUFFER_SIZE
-                concern_indices[1] = (curr_head - int((now - end_ts) * FPS)) % FRAME_BUFFER_SIZE
-                print(f"concern_indices written: {concern_indices[0]} {concern_indices[1]}")
+
+                start_offset = max(0, int((now - start_ts) * FPS))
+                end_offset = max(0, int((now - end_ts) * FPS))
+
+                concern_indices[0] = (curr_head - start_offset) % FRAME_BUFFER_SIZE
+                concern_indices[1] = (curr_head - end_offset) % FRAME_BUFFER_SIZE
             except: pass
 
         _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 20])
         comp_bytes = compressed.tobytes()
         comp_len = len(comp_bytes)
+
+        if comp_len > SLOT_SIZE:
+            time.sleep(max(1/FPS - (time.time() - t_start), 0.001))
+            continue
         
         with buffer_lock:
             head = int(head_tail[0])
