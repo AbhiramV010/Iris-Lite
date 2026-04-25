@@ -13,7 +13,6 @@ draw_bar() {
 echo "Starting Iris Lite"
 draw_bar 0
 
-# Fixed: Added '&' to prevent blocking
 uxterm -T "TOP" -e "top" & 
 sleep 1 && draw_bar 1
 
@@ -29,7 +28,6 @@ sleep 1 && draw_bar 4
 uxterm -T "Zone Monitor" -e "python3 ./Decision/zone_monitor.py" & 
 sleep 1 && draw_bar 5
 
-# Fixed: Ensuring path resolution
 uxterm -T "Compression System" -e "bash -c 'cd $HOME/Iris-Lite/Compression && ./build/PerceptualCompressor; exec bash'" &
 sleep 1 && draw_bar 6
 
