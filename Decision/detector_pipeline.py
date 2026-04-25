@@ -80,6 +80,8 @@ try:
                 main_obj = max(contours, key=cv2.contourArea)
                 x, y, w, h = cv2.boundingRect(main_obj)
                 current_centroid = (x + w//2, y + h//2)
+                
+                scaled_centroid = (int(current_centroid[0] * (W/640)), int(current_centroid[1] * (H/360)))
                 color = (0, 255, 0) 
 
                 if last_centroid:
@@ -91,7 +93,7 @@ try:
                         color = (0, 0, 255) 
 
                 last_centroid = current_centroid
-                cv2.circle(vis, current_centroid, 10, color, -1)
+                cv2.circle(vis, scaled_centroid, 10, color, -1)
 
                 if persistence_count >= 50: 
                     new_capture = CaptureClass(
@@ -106,7 +108,8 @@ try:
                         raise ConnectionRefusedError("The sending of CaptureClass failed")
         else:
             if last_centroid:
-                cv2.circle(vis, last_centroid, 10, (0, 0, 255), -1) 
+                scaled_last = (int(last_centroid[0] * (W/640)), int(last_centroid[1] * (H/360)))
+                cv2.circle(vis, scaled_last, 10, (0, 0, 255), -1) 
             last_centroid = None
             persistence_count = 0 
 

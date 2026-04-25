@@ -10,7 +10,7 @@ from captureinfo import CaptureClass
 FPS = 24  
 BUFFER_MINUTES = 5 
 FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
-SLOT_SIZE = 150000
+SLOT_SIZE = 200000 
 SHM_NAME = "iris_live_frame"
 SHM_NAME_INDICE = "iris_indices"
 CONCERN_SHM = "iris_concern_indices"
@@ -84,13 +84,17 @@ if __name__ == "__main__":
                 concern_indices[1] = (curr_head - end_offset) % FRAME_BUFFER_SIZE
             except: pass
 
-        _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 20])
+        _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 45])
         comp_bytes = compressed.tobytes()
         comp_len = len(comp_bytes)
 
         if comp_len > SLOT_SIZE:
-            time.sleep(max(1/FPS - (time.time() - t_start), 0.001))
-            continue
+            _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 30])
+            comp_bytes = compressed.tobytes()
+            comp_len = len(comp_bytes)
+            if comp_len > SLOT_SIZE:
+                time.sleep(max(1/FPS - (time.time() - t_start), 0.001))
+                continue
         
         with buffer_lock:
             head = int(head_tail[0])

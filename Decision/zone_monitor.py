@@ -111,7 +111,6 @@ try:
         _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
         combined_view = cv2.addWeighted(grass_mask, 0.5, bottom_mask, 1.0, 0)
         cv2.imshow("zone_monitor", combined_view)
-        cv2.imshow("Iris_Lite Camera Feed", frame_raw)
 
         alert = detectGrassOverlap(grass_mask, bottom_mask)
         if alert:
