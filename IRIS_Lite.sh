@@ -16,6 +16,9 @@ draw_bar 0
 uxterm -T "TOP" -e "top" & 
 sleep 1 && draw_bar 1
 
+uxterm -T "Main Tool" -e "python3 ./Decision/main.py" & 
+sleep 1 && draw_bar 1
+
 uxterm -T "Camera Utility" -e "python3 ./Decision/startCamera.py" & 
 sleep 1 && draw_bar 2
 
