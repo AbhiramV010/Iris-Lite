@@ -50,10 +50,8 @@ bool CompressionEngine::initialize(const Config& cfg)
 // ---------------- ENQUEUE ----------------
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
-    {
-        std::lock_guard<std::mutex> lock(eventMutex);
-        eventQueue.push(event);
-    }
+    std::lock_guard<std::mutex> lock(eventMutex);
+    eventQueue.push(event);
     cv.notify_one();
 }
 
@@ -83,9 +81,12 @@ void CompressionEngine::workerLoop()
 }
 
 // ---------------- PROCESS EVENT ----------------
-void CompressionEngine::processEvent(const EventWindow& event) {
-    std::string path = "/mnt/clipDrive/clips/" + std::to_string(event.startFrame) + ".mp4";
-    
+void CompressionEngine::processEvent(const EventWindow& event)
+{
+    std::string path =
+        "/mnt/clipDrive/clips/" +
+        std::to_string(event.startFrame) + ".mp4";
+
     int adaptiveCRF = policy->computeCRF(
         importanceState,
         momentum,
@@ -96,26 +97,30 @@ void CompressionEngine::processEvent(const EventWindow& event) {
 
     cv::Mat prev;
 
+    int frameGuard = 0;
+
     for (uint64_t i = event.startFrame; i < event.endFrame; i++)
     {
         std::vector<uint8_t> jpeg;
 
         if (!sharedBuffer->getFrame(i, jpeg))
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;
-        }
 
         cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
 
         if (frame.empty())
             continue;
 
-        ImportanceSignal signal = importance->analyze(frame, prev);
+        ImportanceSignal signal =
+            importance->analyze(frame, prev);
 
-        // smoothing
-        importanceState = 0.9f * importanceState + 0.1f * signal.global;
-        momentum = 0.85f * momentum + 0.15f * importanceState;
+        importanceState =
+            0.9f * importanceState +
+            0.1f * signal.global;
+
+        momentum =
+            0.85f * momentum +
+            0.15f * importanceState;
 
         bool keep = policy->shouldKeepFrame(
             importanceState,
@@ -123,8 +128,17 @@ void CompressionEngine::processEvent(const EventWindow& event) {
             i
         );
 
-        if (keep && encoder && encoder->isOpen())
+        // SAFETY: prevent full collapse of output timeline
+        frameGuard++;
+
+        bool forceKeep = (frameGuard % 5 == 0);
+
+        if ((keep || forceKeep) &&
+            encoder &&
+            encoder->isOpen())
+        {
             encoder->writeFrame(frame);
+        }
 
         prev = frame;
     }
@@ -134,7 +148,9 @@ void CompressionEngine::processEvent(const EventWindow& event) {
 }
 
 // ---------------- START SEGMENT ----------------
-void CompressionEngine::startNewSegment(const std::string& fileName, int crf)
+void CompressionEngine::startNewSegment(
+    const std::string& fileName,
+    int crf)
 {
     if (encoder && encoder->isOpen())
         encoder->close();

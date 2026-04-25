@@ -3,7 +3,6 @@
 #include <cmath>
 
 // ---------------- FRAME DECISION ----------------
-// combines importance + system stability (momentum)
 bool CompressionPolicy::shouldKeepFrame(float importance,
     float momentum,
     uint64_t frameIndex)
@@ -11,22 +10,31 @@ bool CompressionPolicy::shouldKeepFrame(float importance,
     importance = std::clamp(importance, 0.0f, 1.0f);
     momentum = std::clamp(momentum, 0.0f, 1.0f);
 
-    // stability-aware importance (prevents flicker drops)
-    float stability = 0.6f * importance + 0.4f * momentum;
+    // perceptual stability blend
+    float stability = 0.65f * importance + 0.35f * momentum;
 
-    // nonlinear sharpening
-    float boosted = stability * stability;
+    // FIX: remove destructive squaring (was collapsing values too hard)
+    float boosted = std::pow(stability, 0.8f);
 
-    // temporal adaptation (slight relaxation over time)
     float temporalBias = computeTemporalBias(frameIndex);
 
-    float threshold = 0.15f - temporalBias;
+    // safer baseline threshold
+    float threshold = 0.07f - temporalBias;
+
+    // HARD GUARANTEE: never lose too many frames
+    // ensures temporal continuity (prevents 10s → 1s collapse)
+    static uint64_t frameCounter = 0;
+    frameCounter++;
+
+    const int GUARANTEE_INTERVAL = 5; // keep at least 20% of frames
+
+    if (frameCounter % GUARANTEE_INTERVAL == 0)
+        return true;
 
     return boosted > threshold;
 }
 
 // ---------------- CRF CONTROL ----------------
-// blends importance + momentum for stable compression quality
 int CompressionPolicy::computeCRF(float importance,
     float momentum,
     int baseCRF)
@@ -38,27 +46,23 @@ int CompressionPolicy::computeCRF(float importance,
 
     float compressionFactor = std::pow(1.0f - stability, 2.0f);
 
-    int crfShift = static_cast<int>(compressionFactor * 15.0f);
+    int crfShift = static_cast<int>(compressionFactor * 12.0f);
 
     int crf = baseCRF + crfShift;
 
-    return std::clamp(crf, 16, 36);
+    return std::clamp(crf, 18, 34);
 }
 
 // ---------------- COMPRESSION STRENGTH ----------------
 float CompressionPolicy::computeCompressionStrength(float importance)
 {
     importance = std::clamp(importance, 0.0f, 1.0f);
-
-    return std::pow(1.0f - importance, 1.5f);
+    return std::pow(1.0f - importance, 1.25f);
 }
 
 // ---------------- TEMPORAL BIAS ----------------
-// NOT event detection — just stabilizes early/late frame behavior
 float CompressionPolicy::computeTemporalBias(uint64_t frameIndex)
 {
-    // early frames = slightly more conservative compression
     float bias = std::exp(-frameIndex * 0.00001f);
-
-    return std::clamp(bias * 0.1f, 0.0f, 0.1f);
+    return std::clamp(bias * 0.08f, 0.0f, 0.08f);
 }
