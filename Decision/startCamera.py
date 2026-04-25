@@ -40,7 +40,7 @@ if __name__ == "__main__":
     shared_frame = np.ndarray((H, W, 3), dtype=np.uint8, buffer=shm.buf)
 
     try:
-        print("main util started")
+        print("cam util started")
         while True:
             ret, frame = cap.read()
             if not ret or frame is None:

@@ -33,6 +33,7 @@ def findEvents():
 buffer_lock = threading.Lock()
 
 if __name__ == "__main__":
+    
     while True:
         try:
             shm = shared_memory.SharedMemory(name=SHM_NAME)
@@ -56,6 +57,7 @@ if __name__ == "__main__":
         try: shms.append(shared_memory.SharedMemory(name=name, create=True, size=size))
         except FileExistsError: shms.append(shared_memory.SharedMemory(name=name))
 
+    print("cam util started")
     frame_buffer = np.ndarray((FRAME_BUFFER_SIZE, SLOT_SIZE), dtype=np.uint8, buffer=shms[0].buf)
     frame_sizes = np.ndarray((FRAME_BUFFER_SIZE,), dtype=np.uint32, buffer=shms[1].buf)
     head_tail = np.ndarray((2,), dtype=np.uint64, buffer=shms[2].buf)
