@@ -4,9 +4,6 @@ from multiprocessing import shared_memory
 from multiprocessing.connection import Listener
 import threading
 import time
-import os
-import ctypes
-import sys
 from captureinfo import CaptureClass
 
 FPS = 24  
