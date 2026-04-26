@@ -3,14 +3,12 @@ import pyaudio
 import collections
 import ai_edge_litert.interpreter as litert
 from multiprocessing.connection import Client
-from multiprocessing import shared_memory
 import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 from sensor_helper import *
 import warnings
 import sys
-import time
 
 warnings.simplefilter('ignore', Warning) 
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
@@ -23,29 +21,33 @@ ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
 THRESHOLD = 0.08 # DB SPL threshold, approx 72 dB
 
-AUDIO_RATE = 44100
-AUDIO_CHUNK_SIZE = int(AUDIO_RATE / 24)
-AUDIO_SLOT_SIZE = AUDIO_CHUNK_SIZE * 2
-AUDIO_FRAME_BUFFER_SIZE = 24 * 60 * 5
-AUDIO_SHM_NAME = "iris_audio_buffer"
-
 interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-while True:
-    try:
-        audio_shm = shared_memory.SharedMemory(name=AUDIO_SHM_NAME)
-        break
-    except FileNotFoundError:
-        import time; time.sleep(0.5)
+p = pyaudio.PyAudio()
+device_index = None
 
-audio_buffer_shm = np.ndarray((AUDIO_FRAME_BUFFER_SIZE, AUDIO_SLOT_SIZE), dtype=np.uint8, buffer=audio_shm.buf)
+for i in range(p.get_device_count()):
+    dev_info = p.get_device_info_by_index(i)
+    if dev_info['maxInputChannels'] > 0:
+        if "usb" in dev_info['name'].lower() or "hw" in dev_info['name'].lower():
+            device_index = i
+            break
+
+if device_index is None:
+    try:
+        device_index = p.get_default_input_device_info()['index']
+    except:
+        sys.exit(1)
+
+try:
+    stream = p.open(format=pyaudio.paFloat32, channels=1, rate=RATE, input=True, input_device_index=device_index, frames_per_buffer=CHUNK)
+except:
+    stream = p.open(format=pyaudio.paFloat32, channels=2, rate=RATE, input=True, input_device_index=device_index, frames_per_buffer=CHUNK)
 
 audio_buffer = collections.deque(maxlen=RATE * 3)
-
-slot_index = 0
 
 def get_mel_filters(sr, n_fft, n_mels):
     def hz_to_mel(hz): return 2595 * np.log10(1 + hz / 700.0)
@@ -86,18 +88,11 @@ try:
         start_up(27)
     except: pass
     while True:
-        raw = audio_buffer_shm[slot_index % AUDIO_FRAME_BUFFER_SIZE].tobytes()
-        slot_index += 1
-
-        chunk = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-
-        resample_ratio = RATE / AUDIO_RATE
-        new_len = int(len(chunk) * resample_ratio)
-        chunk = np.interp(
-            np.linspace(0, len(chunk) - 1, new_len),
-            np.arange(len(chunk)),
-            chunk
-        )
+        data = stream.read(CHUNK, exception_on_overflow=False)
+        chunk = np.frombuffer(data, dtype=np.float32)
+        
+        if stream._channels == 2:
+            chunk = chunk.reshape(-1, 2).mean(axis=1)
 
         current_volume = np.sqrt(np.mean(chunk**2))
         print(f"Volume: {current_volume:.5f} | Trigger: {current_volume > THRESHOLD}", end='\r')
@@ -133,14 +128,12 @@ try:
                         conn.send(new_capture)
                     active_detection = False
                     max_confidence = 0.0
-
-        time.sleep(AUDIO_CHUNK_SIZE / AUDIO_RATE)
-
 except KeyboardInterrupt: 
-    pass
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
 finally:
     try:
         close_gpio(17)
         close_gpio(27)
     except: pass
-    audio_shm.close()

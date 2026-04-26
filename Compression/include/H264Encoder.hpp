@@ -3,7 +3,6 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 #include <cstdio>
-#include <vector>
 
 class H264Encoder
 {
@@ -13,7 +12,6 @@ public:
 
     bool open(const std::string& outputPath, int crf);
     bool writeFrame(const cv::Mat& frame);
-    bool writeAudio(const std::vector<uint8_t>& pcm);
     void close();
 
     bool isOpen() const { return ffmpegPipe != nullptr; }
@@ -27,7 +25,6 @@ private:
     int currentCRF = 28;
 
     FILE* ffmpegPipe = nullptr;
-    FILE* audioPipe = nullptr;
     std::string ffmpegCommand;
 
     std::string buildCommand(const std::string& outputPath, int crf);
