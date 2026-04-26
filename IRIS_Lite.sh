@@ -31,7 +31,7 @@ sleep 1 && draw_bar 4
 uxterm -T "Zone Monitor" -e "python3 ./Decision/zone_monitor.py" & 
 sleep 1 && draw_bar 5
 
-uxterm -T "Compression System" -e "cd Compression/build && ./PerceptualCompressor" &
+uxterm -T "Compression System" -e "cd Compression/build && sudo ./PerceptualCompressor" &
 sleep 1 && draw_bar 6
 
 echo -e "\nAll systems started."
