@@ -44,7 +44,7 @@ When a trigger fires, the C++ compression engine reads directly from the shared 
 
 ### Software
 
-- **OS:** Raspberry Pi OS (Bullseye or later, 64-bit recommended)
+- **OS:** Debian Linux
 - **Python:** 3.12.7
 - **C++:** GCC 11+ with C++ 20 support (`std::format`)
 - **OpenCV:** 4.x with `bgsegm` module (`opencv-contrib-python`)
