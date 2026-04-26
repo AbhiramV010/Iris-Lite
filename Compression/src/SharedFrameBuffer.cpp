@@ -12,6 +12,7 @@
 static constexpr const char* SHM_DATA = "iris_frame_buffer_data";
 static constexpr const char* SHM_SIZES = "iris_frame_sizes";
 static constexpr const char* SHM_HEAD = "iris_frame_head_tail";
+static constexpr const char* SHM_AUDIO = "iris_audio_buffer";
 
 // ---------------- INIT ----------------
 bool SharedFrameBuffer::initialize()
@@ -31,6 +32,9 @@ bool SharedFrameBuffer::mapMemory()
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     while ((fd_head_tail = shm_open(SHM_HEAD, O_RDONLY, 0666)) < 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    while ((fd_audio = shm_open(SHM_AUDIO, O_RDONLY, 0666)) < 0)
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     frame_buffer = (uint8_t*)mmap(
@@ -60,9 +64,19 @@ bool SharedFrameBuffer::mapMemory()
         0
     );
 
+    audio_buffer = (uint8_t*)mmap(
+        nullptr,
+        FRAME_BUFFER_SIZE * AUDIO_SLOT_SIZE,
+        PROT_READ,
+        MAP_SHARED,
+        fd_audio,
+        0
+    );
+
     if (frame_buffer == MAP_FAILED ||
         frame_sizes == MAP_FAILED ||
-        head_tail == MAP_FAILED)
+        head_tail == MAP_FAILED ||
+        audio_buffer == MAP_FAILED)
     {
         return false;
     }
@@ -89,6 +103,25 @@ bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& outJpeg)
         outJpeg.data(),
         frame_buffer + slot * SLOT_SIZE,
         size
+    );
+
+    return true;
+}
+
+// ---------------- GET AUDIO ----------------
+bool SharedFrameBuffer::getAudio(uint64_t index, std::vector<uint8_t>& outPCM)
+{
+    if (!audio_buffer)
+        return false;
+
+    size_t slot = index % FRAME_BUFFER_SIZE;
+
+    outPCM.resize(AUDIO_SLOT_SIZE);
+
+    std::memcpy(
+        outPCM.data(),
+        audio_buffer + slot * AUDIO_SLOT_SIZE,
+        AUDIO_SLOT_SIZE
     );
 
     return true;

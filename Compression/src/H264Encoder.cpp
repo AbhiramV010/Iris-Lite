@@ -1,4 +1,5 @@
 #include "H264Encoder.hpp"
+#include "SharedMemoryConfig.hpp"
 #include "logging.hpp"
 
 #include <sstream>
@@ -19,10 +20,13 @@ H264Encoder::~H264Encoder()
 bool H264Encoder::open(const std::string& path, int crf)
 {
     currentCRF = crf;
-    ffmpegCommand = buildCommand(path, crf);
 
     system("mkdir -p /mnt/clipDrive/clips");
+    system("rm -f /tmp/iris_audio.pcm && mkfifo /tmp/iris_audio.pcm");
 
+    audioPipe = popen("cat > /tmp/iris_audio.pcm", "w");
+
+    ffmpegCommand = buildCommand(path, crf);
     ffmpegPipe = popen(ffmpegCommand.c_str(), "w");
 
     if (!ffmpegPipe)
@@ -60,9 +64,25 @@ bool H264Encoder::writeFrame(const cv::Mat& frame)
     return true;
 }
 
+// ---------------- WRITE AUDIO ----------------
+bool H264Encoder::writeAudio(const std::vector<uint8_t>& pcm)
+{
+    if (!audioPipe || pcm.empty())
+        return false;
+
+    size_t written = fwrite(pcm.data(), 1, pcm.size(), audioPipe);
+    return written == pcm.size();
+}
+
 // ---------------- CLOSE ----------------
 void H264Encoder::close()
 {
+    if (audioPipe)
+    {
+        pclose(audioPipe);
+        audioPipe = nullptr;
+    }
+
     if (ffmpegPipe)
     {
         pclose(ffmpegPipe);
@@ -76,6 +96,7 @@ std::string H264Encoder::buildCommand(const std::string& outputPath, int crf)
     std::ostringstream cmd;
 
     cmd << "ffmpeg -y "
+        << "-f s16le -ar " << AUDIO_RATE << " -ac 1 -i /tmp/iris_audio.pcm "
         << "-f rawvideo -pix_fmt bgr24 "
         << "-s " << width << "x" << height << " "
         << "-r " << fps << " "
@@ -90,7 +111,8 @@ std::string H264Encoder::buildCommand(const std::string& outputPath, int crf)
         cmd << "-c:v libx264 -preset ultrafast -crf " << crf;
 #endif
 
-    cmd << " -vsync vfr -pix_fmt yuv420p \"" << outputPath << "\"";
+    cmd << " -c:a aac -b:a 128k "
+        << "-vsync vfr -pix_fmt yuv420p \"" << outputPath << "\"";
 
     return cmd.str();
 }

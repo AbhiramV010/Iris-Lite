@@ -6,9 +6,6 @@
 #include <chrono>
 #include <thread>
 #include <cmath>
-#include <iomanip>
-#include <ctime>
-#include <sstream>
 
 // ---------------- SYSTEM LOAD ----------------
 float CompressionEngine::getSystemLoad()
@@ -84,13 +81,11 @@ void CompressionEngine::workerLoop()
 }
 
 // ---------------- PROCESS EVENT ----------------
-void CompressionEngine::processEvent(const EventWindow& event) {
-    std::time_t t = std::time(nullptr);
-    std::tm* now = std::localtime(&t);
-    std::ostringstream oss;
-    oss << std::put_time(now, "%Y%m%d");
-
-    std::string path = "/mnt/clipDrive/clips/" + oss.str() + "_" + std::to_string(event.startFrame) + ".mp4"; // smart naming
+void CompressionEngine::processEvent(const EventWindow& event)
+{
+    std::string path =
+        "/mnt/clipDrive/clips/" +
+        std::to_string(event.startFrame) + ".mp4";
 
     int adaptiveCRF = policy->computeCRF(
         importanceState,
@@ -105,9 +100,12 @@ void CompressionEngine::processEvent(const EventWindow& event) {
     for (uint64_t i = event.startFrame; i < event.endFrame; i++)
     {
         std::vector<uint8_t> jpeg;
+        std::vector<uint8_t> pcm;
 
         if (!sharedBuffer->getFrame(i, jpeg))
             continue;
+
+        sharedBuffer->getAudio(i, pcm);
 
         cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
 
@@ -145,6 +143,8 @@ void CompressionEngine::processEvent(const EventWindow& event) {
             if (encoder->isOpen())
             {
                 encoder->writeFrame(frame);
+                if (!pcm.empty())
+                    encoder->writeAudio(pcm);
             }
         }
 
