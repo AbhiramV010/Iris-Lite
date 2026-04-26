@@ -19,7 +19,7 @@ RATE = 16000
 CHUNK = 4096 
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
-THRESHOLD = 0.08 
+THRESHOLD = 0.08 # DB SPL threshold, approx 72 dB
 
 interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
