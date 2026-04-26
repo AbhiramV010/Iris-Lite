@@ -129,7 +129,7 @@ Iris_Lite runs as **six parallel processes**, coordinated through POSIX shared m
 **detector_pipeline.py** runs a two-tiered trigger: luminance shift detection and CNT background subtraction. Triggers that exceed an entropy threshold of `3.0` and show centroid movement over 50 consecutive frames send a `CaptureClass` to the event bus, with a ±5 second buffer around the event window.
 
 **listener.py** samples audio at 16kHz, builds mel spectrograms on-device, and runs inference with the bundled TFLite model. It classifies 7 sound categories — screaming, gunshots, glass breaking, aggressive knocking, car screech, dog barking, and ambience — and triggers a capture on any concerning detection.
-
+                - the H5 file (actual big beefy AI model) was too large to commit to github, so we compressed it into a TFLite (for storage & Pi purposes) and put THAT on github
 **zone_monitor.py** uses KNN background subtraction and HSV-based grass segmentation to detect when a foreground object overlaps a defined ground zone, triggering a capture after 2+ seconds of sustained overlap.
 
 All triggers include GPIO state from the door sensor (pin 17) and motion sensor (pin 27), recorded in the `CaptureClass` metadata.
