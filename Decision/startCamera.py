@@ -22,7 +22,11 @@ def init_camera():
     if codec != "MJPG":
         print(f"Warning: Hardware using {codec} instead of MJPG. Stride issues may occur.")
     
+    for x in range(0,120):
+        pass
+    
     return cap
+
 
 if __name__ == "__main__":
     prev_zone = None

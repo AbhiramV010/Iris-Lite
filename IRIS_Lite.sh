@@ -20,7 +20,7 @@ uxterm -T "Main Tool" -e "python3 ./Decision/main.py" &
 sleep 1 && draw_bar 1
 
 uxterm -T "Camera Utility" -e "python3 ./Decision/startCamera.py" & 
-sleep 1 && draw_bar 2
+sleep 5 && draw_bar 2
 
 uxterm -T "Detector Pipeline" -e "python3 ./Decision/detector_pipeline.py" & 
 sleep 1 && draw_bar 3
