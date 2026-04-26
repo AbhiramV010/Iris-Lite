@@ -93,11 +93,9 @@ void CompressionEngine::processEvent(const EventWindow& event)
         currentCRF
     );
 
-    startNewSegment(path, adaptiveCRF);
-
     cv::Mat prev;
-
     int frameGuard = 0;
+    bool encoderOpened = false;
 
     for (uint64_t i = event.startFrame; i < event.endFrame; i++)
     {
@@ -128,22 +126,27 @@ void CompressionEngine::processEvent(const EventWindow& event)
             i
         );
 
-        // SAFETY: prevent full collapse of output timeline
         frameGuard++;
-
         bool forceKeep = (frameGuard % 5 == 0);
 
-        if ((keep || forceKeep) &&
-            encoder &&
-            encoder->isOpen())
+        if ((keep || forceKeep) && encoder)
         {
-            encoder->writeFrame(frame);
+            if (!encoderOpened)
+            {
+                startNewSegment(path, adaptiveCRF);
+                encoderOpened = true;
+            }
+
+            if (encoder->isOpen())
+            {
+                encoder->writeFrame(frame);
+            }
         }
 
         prev = frame;
     }
 
-    if (encoder && encoder->isOpen())
+    if (encoderOpened && encoder && encoder->isOpen())
         encoder->close();
 }
 

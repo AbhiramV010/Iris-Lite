@@ -21,8 +21,7 @@ bool H264Encoder::open(const std::string& path, int crf)
     currentCRF = crf;
     ffmpegCommand = buildCommand(path, crf);
 
-    // ensure directory exists
-    system("mkdir -p ./clips");
+    system("mkdir -p /mnt/clipDrive/clips");
 
     ffmpegPipe = popen(ffmpegCommand.c_str(), "w");
 
@@ -91,7 +90,7 @@ std::string H264Encoder::buildCommand(const std::string& outputPath, int crf)
         cmd << "-c:v libx264 -preset ultrafast -crf " << crf;
 #endif
 
-    cmd << " -pix_fmt yuv420p \"" << outputPath << "\"";
+    cmd << " -vsync vfr -pix_fmt yuv420p \"" << outputPath << "\"";
 
     return cmd.str();
 }
