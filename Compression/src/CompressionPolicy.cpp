@@ -14,19 +14,19 @@ bool CompressionPolicy::shouldKeepFrame(float importance,
     float stability = 0.65f * importance + 0.35f * momentum;
 
     // FIX: remove destructive squaring (was collapsing values too hard)
-    float boosted = std::pow(stability, 0.8f);
+    float boosted = std::pow(stability, 0.6f);
 
     float temporalBias = computeTemporalBias(frameIndex);
 
     // safer baseline threshold
-    float threshold = 0.07f - temporalBias;
+    float threshold = 0.03f - temporalBias;
 
     // HARD GUARANTEE: never lose too many frames
     // ensures temporal continuity (prevents 10s → 1s collapse)
     static uint64_t frameCounter = 0;
     frameCounter++;
 
-    const int GUARANTEE_INTERVAL = 5; // keep at least 20% of frames
+    const int GUARANTEE_INTERVAL = 2; // keep at least 50% of frames
 
     if (frameCounter % GUARANTEE_INTERVAL == 0)
         return true;
