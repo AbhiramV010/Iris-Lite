@@ -3,6 +3,7 @@ import pyaudio
 import collections
 import ai_edge_litert.interpreter as litert
 from multiprocessing.connection import Client
+from multiprocessing.shared_memory import SharedMemory
 import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
@@ -20,6 +21,12 @@ CHUNK = 4096
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = b'1000011'
 THRESHOLD = 0.08 # DB SPL threshold, approx 72 dB
+
+SHM_SIZE = RATE * 300 * 4 
+
+shm = SharedMemory(name="iris_lite_audio", create=True, size=SHM_SIZE)
+shm_array = np.ndarray((RATE * 300,), dtype=np.float32, buffer=shm.buf)
+shm_index = 0
 
 interpreter = litert.Interpreter(model_path=MODEL)
 interpreter.allocate_tensors()
@@ -99,6 +106,16 @@ try:
         if stream._channels == 2:
             chunk = chunk.reshape(-1, 2).mean(axis=1)
 
+        num_samples = len(chunk)
+        if shm_index + num_samples > len(shm_array):
+            remaining = len(shm_array) - shm_index
+            shm_array[shm_index:] = chunk[:remaining]
+            shm_array[:num_samples - remaining] = chunk[remaining:]
+            shm_index = num_samples - remaining
+        else:
+            shm_array[shm_index:shm_index + num_samples] = chunk
+            shm_index += num_samples
+
         current_volume = np.sqrt(np.mean(chunk**2))
         print(f"Volume: {current_volume:.5f} | Trigger: {current_volume > THRESHOLD}", end='\r')
         
@@ -142,6 +159,7 @@ except KeyboardInterrupt:
     stream.stop_stream()
     stream.close()
     p.terminate()
+    shm.close()
 finally:
     try:
         close_gpio(17)
