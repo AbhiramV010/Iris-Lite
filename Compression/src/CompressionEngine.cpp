@@ -1,6 +1,5 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
-#include "SystemGovernor.cpp"
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
