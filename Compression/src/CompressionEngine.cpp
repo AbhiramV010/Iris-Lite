@@ -1,29 +1,12 @@
 #include "CompressionEngine.hpp"
-#include "SharedMemoryConfig.hpp"
 #include "logging.hpp"
 
 #include <opencv2/opencv.hpp>
-#include <chrono>
-#include <thread>
-#include <cmath>
-#include <iomanip>
-#include <ctime>
-#include <sstream>
+#include <opencv2/objdetect.hpp>
 
-// ---------------- SYSTEM LOAD ----------------
-float CompressionEngine::getSystemLoad()
-{
-    return std::clamp(importanceState, 0.0f, 1.5f);
-}
-
-// ---------------- INIT ----------------
 bool CompressionEngine::initialize(const Config& cfg)
 {
-    importance = std::make_unique<ImportanceEngine>(
-        cfg.perceptualWidth,
-        cfg.perceptualHeight,
-        cfg
-    );
+    config = cfg;
 
     policy = std::make_unique<CompressionPolicy>();
 
@@ -34,151 +17,119 @@ bool CompressionEngine::initialize(const Config& cfg)
         true
     );
 
-    sharedBuffer = std::make_unique<SharedFrameBuffer>();
+    buffer = std::make_unique<SharedFrameBuffer>();
 
-    if (!sharedBuffer->initialize())
-    {
-        logError("SharedFrameBuffer init failed");
+    if (!buffer->initialize())
         return false;
-    }
 
-    running = true;
-    stopWorker = false;
-
-    worker = std::thread(&CompressionEngine::workerLoop, this);
+    faceCascade.load("haarcascade_frontalface_default.xml");
 
     return true;
 }
 
-// ---------------- ENQUEUE ----------------
-void CompressionEngine::enqueueEvent(const EventWindow& event)
+float CompressionEngine::computeRegionImportance(const cv::Mat& frame)
 {
-    std::lock_guard<std::mutex> lock(eventMutex);
-    eventQueue.push(event);
-    cv.notify_one();
+    int w = frame.cols;
+    int h = frame.rows;
+
+    cv::Rect center(w * 0.25, h * 0.25, w * 0.5, h * 0.5);
+    cv::Mat roi = frame(center);
+
+    cv::Mat gray;
+    cv::cvtColor(roi, gray, cv::COLOR_BGR2GRAY);
+
+    return cv::mean(gray)[0] / 255.0f;
 }
 
-// ---------------- WORKER LOOP ----------------
-void CompressionEngine::workerLoop()
+bool CompressionEngine::detectFace(const cv::Mat& frame)
 {
-    while (!stopWorker)
-    {
-        EventWindow event;
+    std::vector<cv::Rect> faces;
+    cv::Mat gray;
 
-        {
-            std::unique_lock<std::mutex> lock(eventMutex);
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    cv::equalizeHist(gray, gray);
 
-            cv.wait(lock, [&] {
-                return stopWorker || !eventQueue.empty();
-                });
+    faceCascade.detectMultiScale(gray, faces, 1.1, 3);
 
-            if (stopWorker)
-                return;
-
-            event = eventQueue.front();
-            eventQueue.pop();
-        }
-
-        processEvent(event);
-    }
+    return !faces.empty();
 }
 
-// ---------------- PROCESS EVENT ----------------
-void CompressionEngine::processEvent(const EventWindow& event) {
-    std::time_t t = std::time(nullptr);
-    std::tm* now = std::localtime(&t);
-    std::ostringstream oss;
-    oss << std::put_time(now, "%Y%m%d");
-
-    std::string path = "/mnt/clipDrive/clips/" + oss.str() + "_" + std::to_string(event.startFrame) + ".mp4"; // smart naming
-
-    int adaptiveCRF = policy->computeCRF(
-        importanceState,
-        momentum,
-        currentCRF
-    );
+void CompressionEngine::processEvent(const EventWindow& event)
+{
+    std::string path =
+        "/mnt/clipDrive/clips/" +
+        std::to_string(event.startFrame) + ".mp4";
 
     cv::Mat prev;
-    int frameGuard = 0;
-    bool encoderOpened = false;
+    bool opened = false;
 
     for (uint64_t i = event.startFrame; i < event.endFrame; i++)
     {
         std::vector<uint8_t> jpeg;
 
-        if (!sharedBuffer->getFrame(i, jpeg))
+        if (!buffer->getFrame(i, jpeg))
             continue;
 
         cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
-
         if (frame.empty())
             continue;
 
-        ImportanceSignal signal =
-            importance->analyze(frame, prev);
+        // ---------------- MOTION ----------------
+        float motion = 0.0f;
 
-        importanceState =
-            0.9f * importanceState +
-            0.1f * signal.global;
+        if (!prev.empty())
+        {
+            cv::Mat diff;
+            cv::absdiff(frame, prev, diff);
+            motion = cv::mean(diff)[0] / 255.0f;
+        }
 
-        momentum =
-            0.85f * momentum +
-            0.15f * importanceState;
+        // smooth motion (stability fix)
+        motion = 0.85f * lastMotion + 0.15f * motion;
+        lastMotion = motion;
 
-        bool keep = policy->shouldKeepFrame(
-            importanceState,
-            momentum,
-            i
+        // ---------------- SPATIAL ----------------
+        cv::Mat gray, edges;
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        cv::Canny(gray, edges, 50, 150);
+
+        float spatial =
+            (float)cv::countNonZero(edges) /
+            (frame.rows * frame.cols);
+
+        // ---------------- FACE ----------------
+        float face = detectFace(frame) ? 1.0f : 0.0f;
+
+        // ---------------- REGION ----------------
+        float region = computeRegionImportance(frame);
+
+        // ---------------- SCORE ----------------
+        float score = policy->perceptualScore(
+            policy->motion(motion),
+            policy->spatial(spatial),
+            policy->face(face > 0.5f),
+            policy->region(region)
         );
 
-        frameGuard++;
-        bool forceKeep = (frameGuard % 5 == 0);
+        // temporal smoothing (critical stability layer)
+        score = 0.85f * lastScore + 0.15f * score;
+        lastScore = score;
 
-        if ((keep || forceKeep) && encoder)
+        int crf = policy->computeCRF(score, config.crf);
+        int fps = policy->computeFPS(score, config.fps);
+
+        if (!opened)
         {
-            if (!encoderOpened)
-            {
-                startNewSegment(path, adaptiveCRF);
-                encoderOpened = true;
-            }
-
-            if (encoder->isOpen())
-            {
-                encoder->writeFrame(frame);
-            }
+            encoder->open(path, crf);
+            opened = true;
         }
+
+        if (encoder->isOpen())
+            encoder->writeFrame(frame);
 
         prev = frame;
     }
 
-    if (encoderOpened && encoder && encoder->isOpen())
-        encoder->close();
-}
-
-// ---------------- START SEGMENT ----------------
-void CompressionEngine::startNewSegment(
-    const std::string& fileName,
-    int crf)
-{
-    if (encoder && encoder->isOpen())
-        encoder->close();
-
-    if (!encoder->open(fileName, crf))
-    {
-        logError("Failed to open encoder: " + fileName);
-        running = false;
-    }
-}
-
-// ---------------- SHUTDOWN ----------------
-void CompressionEngine::shutdown()
-{
-    stopWorker = true;
-    cv.notify_all();
-
-    if (worker.joinable())
-        worker.join();
-
-    if (encoder)
+    if (encoder->isOpen())
         encoder->close();
 }

@@ -1,23 +1,21 @@
 #pragma once
-#include <cstdint>
 
 class CompressionPolicy
 {
 public:
-    // Frame-level decision (keep or drop)
-    bool shouldKeepFrame(float importance,
-        float momentum,
-        uint64_t frameIndex);
+    float motion(float v);
+    float spatial(float v);
+    float face(bool detected);
+    float region(float v);
 
-    // Segment-level quality control
-    int computeCRF(float importance,
-        float momentum,
-        int baseCRF);
+    float perceptualScore(float motion,
+        float spatial,
+        float face,
+        float region);
 
-    // Compression intensity signal (debug/analysis)
-    float computeCompressionStrength(float importance);
+    int computeCRF(float score, int baseCRF);
+    int computeFPS(float score, int baseFPS);
 
-    // Soft transition detector (NOT event detection)
-    // Used to bias compression smoothness, not trigger logic
-    float computeTemporalBias(uint64_t frameIndex);
-}; 
+private:
+    float clamp01(float v);
+};

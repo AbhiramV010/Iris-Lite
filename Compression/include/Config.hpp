@@ -3,11 +3,10 @@
 
 struct Config
 {
-    std::string mode;
+    std::string mode = "production";
 
-    int encodeWidth = 1280;
-    int encodeHeight = 720;
-
+    int encodeWidth = 640;
+    int encodeHeight = 360;
     int fps = 24;
 
     int perceptualWidth = 320;
@@ -17,11 +16,14 @@ struct Config
     bool useMotion = true;
     bool useEdges = true;
 
-    int crf = 28;
+    int crf = 26;
 
-    // event system
-    int bufferSize = 300;
-    float estimatedLatency = 3.0f;
+    // adaptive compression tuning
+    int fpsIdle = 12;
+    int fpsMotion = 20;
+    int fpsEvent = 24;
+
+    int minKeepFps = 8;
 };
 
 bool loadConfig(Config& cfg, const std::string& path);

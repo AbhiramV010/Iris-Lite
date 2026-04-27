@@ -1,14 +1,9 @@
 #pragma once
 
 #include <memory>
-#include <atomic>
-#include <string>
-#include <queue>
-#include <mutex>
-#include <thread>
-#include <condition_variable>
+#include <opencv2/opencv.hpp>
 
-#include "ImportanceEngine.hpp"
+#include "Config.hpp"
 #include "CompressionPolicy.hpp"
 #include "H264Encoder.hpp"
 #include "SharedFrameBuffer.hpp"
@@ -24,34 +19,21 @@ class CompressionEngine
 {
 public:
     bool initialize(const Config& cfg);
-    void shutdown();
-
-    void enqueueEvent(const EventWindow& event);
-
-private:
-    void workerLoop();
     void processEvent(const EventWindow& event);
-    void startNewSegment(const std::string& fileName, int crf);
-
-    float getSystemLoad();
 
 private:
-    std::atomic<bool> running{ false };
+    float computeRegionImportance(const cv::Mat& frame);
+    bool detectFace(const cv::Mat& frame);
 
-    std::unique_ptr<ImportanceEngine> importance;
+private:
+    Config config;
+
     std::unique_ptr<CompressionPolicy> policy;
     std::unique_ptr<H264Encoder> encoder;
-    std::unique_ptr<SharedFrameBuffer> sharedBuffer;
+    std::unique_ptr<SharedFrameBuffer> buffer;
 
-    float importanceState = 0.5f;
-    float momentum = 0.5f;
+    cv::CascadeClassifier faceCascade;
 
-    int currentCRF = 28;
-
-    std::queue<EventWindow> eventQueue;
-    std::mutex eventMutex;
-    std::condition_variable cv;
-
-    std::thread worker;
-    bool stopWorker = false;
+    float lastScore = 0.0f;
+    float lastMotion = 0.0f;
 };

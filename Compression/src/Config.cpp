@@ -1,10 +1,9 @@
 #include "Config.hpp"
 #include "logging.hpp"
-#include <fstream>
-#include <iostream>
+#include "json.hpp"
 
-// JSON library
-#include "../external/json.hpp"
+#include <fstream>
+
 using json = nlohmann::json;
 
 bool loadConfig(Config& cfg, const std::string& path)
@@ -12,25 +11,18 @@ bool loadConfig(Config& cfg, const std::string& path)
     std::ifstream file(path);
     if (!file.is_open())
     {
-        logError("Failed to open config file: " + path);
+        logError("Failed to open config: " + path);
         return false;
     }
 
     json j;
-    try
-    {
-        file >> j;
-    }
-    catch (const std::exception& e)
-    {
-        logError(std::string("JSON parse error: ") + e.what());
-        return false;
-    }
+    file >> j;
 
-    // Load values with defaults
-    cfg.mode = j.value("mode", "windows");
+    cfg.mode = j.value("mode", "production");
+
     cfg.encodeWidth = j.value("encode_width", 640);
     cfg.encodeHeight = j.value("encode_height", 360);
+    cfg.fps = j.value("fps", 24);
 
     cfg.perceptualWidth = j.value("perceptual_width", 320);
     cfg.perceptualHeight = j.value("perceptual_height", 180);
@@ -38,10 +30,14 @@ bool loadConfig(Config& cfg, const std::string& path)
     cfg.useFaces = j.value("use_faces", true);
     cfg.useMotion = j.value("use_motion", true);
     cfg.useEdges = j.value("use_edges", true);
-    cfg.fps = j.value("fps", 24);
-    cfg.crf = j.value("crf", 22);
 
+    cfg.crf = j.value("crf", 26);
 
-    logInfo("Config loaded successfully from " + path);
+    cfg.fpsIdle = j.value("fps_idle", 12);
+    cfg.fpsMotion = j.value("fps_motion", 20);
+    cfg.fpsEvent = j.value("fps_event", 24);
+
+    cfg.minKeepFps = j.value("min_keep_fps", 8);
+
     return true;
 }
