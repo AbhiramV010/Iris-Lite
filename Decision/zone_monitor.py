@@ -8,6 +8,7 @@ from collections import deque
 from sensor_helper import *
 import sys
 import time
+import warnings
 
 W, H = 1920, 1080
 SHM_NAME = "iris_live_frame" # pull from the shm
@@ -110,8 +111,10 @@ try:
             bottom_mask[roi_y1:roi_y2, x:x+w] = fgmask[roi_y1:roi_y2, x:x+w]
         _, bottom_mask = cv2.threshold(bottom_mask, 127, 255, cv2.THRESH_BINARY)
         combined_view = cv2.addWeighted(grass_mask, 0.5, bottom_mask, 1.0, 0)
-        cv2.imshow("zone_monitor", combined_view)
-
+        
+        try: cv2.imshow("zone_monitor", combined_view)
+        except: warnings.warn("No display detected, will run headlessly")
+        
         alert = detectGrassOverlap(grass_mask, bottom_mask)
         if alert:
             try: 

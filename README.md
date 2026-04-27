@@ -134,7 +134,7 @@ Iris_Lite runs as **six parallel processes**, coordinated through POSIX shared m
 - The initial H5 file was too large to commit to github, so we compressed it into a TFLite (for storage & Pi purposes) and put that on the repository
 - The Deep Learning model was created by us, and it was NOT a pre-trained or pre-created model
 
-**zone_monitor.py** uses KNN background subtraction and HSV-based grass segmentation to detect when a foreground object overlaps a defined ground zone, triggering a capture after 2+ seconds of sustained overlap.
+**zone_monitor.py** uses GSOC background subtraction and HSV-based grass segmentation to detect when a foreground object overlaps a defined ground zone, triggering a capture after 2+ seconds of sustained overlap.
 
 All triggers include GPIO state from the door sensor (pin 17) and motion sensor (pin 27), recorded in the `CaptureClass` metadata.
 
@@ -194,3 +194,4 @@ Any modifications or derivatives **must** be redistributed under the same licens
 
 - **Macmeet B** — For lending the Raspberry Pi 4B that made this project possible
 - **Mr. Hadley** — For his support throughout development
+- **Mrs. Bassi and Mr. Gill** - For allowing us to conduct tests in their home

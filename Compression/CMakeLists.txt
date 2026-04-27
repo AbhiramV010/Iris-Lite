@@ -51,6 +51,7 @@ set(SOURCES
     src/ImportanceEngine.cpp
     src/SharedFrameBuffer.cpp
     src/logging.cpp
+    src/SystemGovernor.cpp
 )
 
 # ---------------- EXECUTABLE ----------------

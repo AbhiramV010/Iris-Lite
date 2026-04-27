@@ -6,6 +6,7 @@ import threading
 import time
 import datetime
 from captureinfo import CaptureClass
+import warnings
 
 FPS = 24  
 BUFFER_MINUTES = 5 
@@ -68,7 +69,9 @@ if __name__ == "__main__":
     while True:
         t_start = time.time()
 
-        cv2.imshow("Iris-Lite Camera Feed", stream_view)
+        try: cv2.imshow("Iris-Lite Camera Feed", stream_view)
+        except: warnings.warn("No display detected, will run headlessly")
+        
         if cv2.waitKey(1) & 0xFF == ord('x'):
             break
 

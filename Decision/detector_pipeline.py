@@ -7,6 +7,7 @@ from multiprocessing import shared_memory
 from sensor_helper import *
 import sys
 import time
+import warnings
 
 W, H = 1920, 1080
 SHM_NAME = "iris_live_frame" # pull from the shm
@@ -113,7 +114,9 @@ try:
             last_centroid = None
             persistence_count = 0 
 
-        cv2.imshow("Two-tiered detection", vis)
+        try: cv2.imshow("Two-tiered detection", vis)
+        except: warnings.warn("No display detected, will run headlessly")
+
         if cv2.waitKey(1) & 0xFF == ord('x'): break
 
         elapsed = time.monotonic() - loop_start
