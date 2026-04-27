@@ -1,17 +1,15 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
-
 #include <opencv2/opencv.hpp>
 #include <chrono>
-#include <thread>
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
     config = cfg;
 
     policy = std::make_unique<CompressionPolicy>();
-    governor = std::make_unique<SystemGovernor>();
     buffer = std::make_unique<SharedFrameBuffer>();
+    governor = std::make_unique<SystemGovernor>();
 
     if (!buffer->initialize())
     {
@@ -26,22 +24,14 @@ bool CompressionEngine::initialize(const Config& cfg)
         true
     );
 
-    stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine initialized");
     return true;
 }
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
     std::lock_guard<std::mutex> lock(mtx);
-
-    if (queue.size() > 100)
-    {
-        queue.pop();
-        logWarn("Queue overflow drop");
-    }
 
     queue.push(event);
     cv.notify_one();
@@ -59,10 +49,41 @@ void CompressionEngine::shutdown()
         encoder->close();
 }
 
-float CompressionEngine::getPressureThrottle()
+float CompressionEngine::computeTemporalWeight(uint64_t frame, uint64_t peak)
 {
-    if (!governor) return 0.0f;
-    return governor->computePressure();
+    float dist = std::abs((int64_t)frame - (int64_t)peak);
+
+    // gaussian-like decay
+    return std::exp(-(dist * dist) / 200.0f);
+}
+
+FrameImportance CompressionEngine::evaluateFrame(uint64_t index, const EventWindow& event)
+{
+    std::vector<uint8_t> jpeg;
+    if (!buffer->getFrame(index, jpeg))
+        return { 0.0f, false };
+
+    cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+    if (frame.empty())
+        return { 0.0f, false };
+
+    cv::Mat gray;
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+
+    float motion = 0.0f;
+    float spatial = cv::mean(cv::abs(gray))[0] / 255.0f;
+
+    float temporal = computeTemporalWeight(index, (event.startFrame + event.endFrame) / 2);
+
+    float score = policy->importanceScore(
+        motion,
+        spatial,
+        temporal
+    );
+
+    bool isPeak = score > 0.78f;
+
+    return { score, isPeak };
 }
 
 void CompressionEngine::workerLoop()
@@ -73,11 +94,7 @@ void CompressionEngine::workerLoop()
 
         {
             std::unique_lock<std::mutex> lock(mtx);
-
-            cv.wait(lock, [&]
-                {
-                    return stop || !queue.empty();
-                });
+            cv.wait(lock, [&] { return stop || !queue.empty(); });
 
             if (stop && queue.empty())
                 return;
@@ -86,22 +103,34 @@ void CompressionEngine::workerLoop()
             queue.pop();
         }
 
-        if (getPressureThrottle() > 0.85f)
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
         processEvent(event);
     }
 }
 
 void CompressionEngine::processEvent(const EventWindow& event)
 {
-    cv::Mat prev;
+    std::string path = "/tmp/iris_" + std::to_string(event.startFrame) + ".mp4";
+
     bool opened = false;
 
-    std::string path = "/tmp/iris_" + std::to_string(event.startFrame) + ".mp4";
+    uint64_t peakFrame = (event.startFrame + event.endFrame) / 2;
 
     for (uint64_t i = event.startFrame; i < event.endFrame && !stop; i++)
     {
+        FrameImportance imp = evaluateFrame(i, event);
+
+        int crf = policy->computeCRF(imp.score);
+        int fps = policy->computeFPS(imp.score);
+
+        if (!opened)
+        {
+            encoder->open(path, crf);
+            opened = true;
+        }
+
+        if (imp.score < 0.15f)
+            continue; // background skip (safe)
+
         std::vector<uint8_t> jpeg;
         if (!buffer->getFrame(i, jpeg))
             continue;
@@ -110,44 +139,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
         if (frame.empty())
             continue;
 
-        float motion = 0.0f;
-
-        if (!prev.empty())
-        {
-            cv::Mat diff;
-            cv::absdiff(frame, prev, diff);
-            motion = cv::mean(diff)[0] / 255.0f;
-        }
-
-        lastMotion = 0.85f * lastMotion + 0.15f * motion;
-
-        cv::Mat gray, edges;
-        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-        cv::Canny(gray, edges, 50, 150);
-
-        float spatial = (float)cv::countNonZero(edges) /
-            (frame.rows * frame.cols + 1e-6f);
-
-        float score = policy->perceptualScore(
-            policy->motion(lastMotion),
-            policy->spatial(spatial),
-            policy->face(false),
-            policy->region(0.5f)
-        );
-
-        lastScore = 0.85f * lastScore + 0.15f * score;
-
-        int crf = policy->computeCRF(lastScore, config.baseCRF);
-
-        if (!opened)
-        {
-            encoder->open(path, crf);
-            opened = true;
-        }
-
         encoder->writeFrame(frame);
-
-        prev = frame;
     }
 
     encoder->close();

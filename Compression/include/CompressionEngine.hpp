@@ -1,12 +1,11 @@
 #pragma once
 
-#include <memory>
-#include <thread>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <thread>
 #include <atomic>
-#include <string>
+#include <memory>
 
 #include "Config.hpp"
 #include "CompressionPolicy.hpp"
@@ -21,6 +20,12 @@ struct EventWindow
     std::string trigger;
 };
 
+struct FrameImportance
+{
+    float score;
+    bool isPeak;
+};
+
 class CompressionEngine
 {
 public:
@@ -31,7 +36,9 @@ public:
 private:
     void workerLoop();
     void processEvent(const EventWindow& event);
-    float getPressureThrottle();
+
+    FrameImportance evaluateFrame(uint64_t index, const EventWindow& event);
+    float computeTemporalWeight(uint64_t frame, uint64_t peak);
 
 private:
     Config config;
@@ -48,6 +55,5 @@ private:
     std::unique_ptr<SharedFrameBuffer> buffer;
     std::unique_ptr<SystemGovernor> governor;
 
-    float lastScore = 0.5f;
-    float lastMotion = 0.0f;
+    float lastImportance = 0.5f;
 };

@@ -17,13 +17,22 @@ bool SharedFrameBuffer::initialize()
 {
     bufferSize = FRAME_BUFFER_SIZE;
     slotSize = SLOT_SIZE;
-
     return mapMemory();
 }
 
 bool SharedFrameBuffer::isValid() const
 {
     return frame_buffer && frame_sizes && head_tail;
+}
+
+uint64_t SharedFrameBuffer::getHead() const
+{
+    return head_tail ? head_tail[0] : 0;
+}
+
+uint64_t SharedFrameBuffer::getTail() const
+{
+    return head_tail ? head_tail[1] : 0;
 }
 
 bool SharedFrameBuffer::mapMemory()
@@ -35,13 +44,13 @@ bool SharedFrameBuffer::mapMemory()
 
             while ((fd = shm_open(name, O_RDONLY, 0666)) < 0)
             {
-                if (++tries > 50)
+                if (++tries > 100)
                 {
                     logError(std::string("SHM failed: ") + name);
                     return -1;
                 }
 
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
             return fd;
@@ -66,16 +75,9 @@ bool SharedFrameBuffer::mapMemory()
         2 * sizeof(uint64_t),
         PROT_READ, MAP_SHARED, fd_head_tail, 0);
 
-    if (frame_buffer == MAP_FAILED ||
-        frame_sizes == MAP_FAILED ||
-        head_tail == MAP_FAILED)
-    {
-        logError("mmap failed (SharedFrameBuffer)");
-        return false;
-    }
-
-    logInfo("SharedFrameBuffer ready");
-    return true;
+    return frame_buffer != MAP_FAILED &&
+        frame_sizes != MAP_FAILED &&
+        head_tail != MAP_FAILED;
 }
 
 bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& out)

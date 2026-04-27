@@ -8,14 +8,11 @@ public:
     float face(bool detected) const;
     float region(float v) const;
 
-    float perceptualScore(float motion,
-        float spatial,
-        float face,
-        float region) const;
+    float importanceScore(float m, float s, float sensorBoost) const;
 
-    int computeCRF(float score, int baseCRF) const;
-    int computeFPS(float score, int baseFPS) const;
+    int computeCRF(float importance) const;
+    int computeFPS(float importance) const;
 
 private:
-    static float clamp01(float v);
+    float clamp01(float v) const;
 };

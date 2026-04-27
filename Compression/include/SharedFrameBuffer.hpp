@@ -10,6 +10,9 @@ public:
 
     bool getFrame(uint64_t index, std::vector<uint8_t>& outJpeg);
 
+    uint64_t getHead() const;
+    uint64_t getTail() const;
+
 private:
     bool mapMemory();
 
