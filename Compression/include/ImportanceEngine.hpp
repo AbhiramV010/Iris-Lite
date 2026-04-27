@@ -7,18 +7,13 @@
 class ImportanceEngine
 {
 public:
-    ImportanceEngine(int width, int height, const Config& cfg);
-    ~ImportanceEngine();
-
-    ImportanceSignal analyze(const cv::Mat& frame, const cv::Mat& prev);
+    ImportanceEngine(int w, int h, const Config& cfg);
+    ImportanceSignal analyze(const cv::Mat& frame,
+        const cv::Mat& prev);
 
 private:
-    int w;
-    int h;
-
+    int w, h;
     Config cfg;
 
-    cv::CascadeClassifier faceCascade;
-
-    float prevGlobal = 0.5f;
+    float prevMotion = 0.0f;
 };

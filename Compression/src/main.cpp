@@ -16,9 +16,27 @@ struct SharedEventBuffer
     uint64_t endFrame;
 };
 
+static bool waitForSHM(const char* name, int& fd)
+{
+    int tries = 0;
+
+    while ((fd = shm_open(name, O_RDONLY, 0666)) < 0)
+    {
+        if (++tries > 100)
+        {
+            logError(std::string("SHM timeout: ") + name);
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    return true;
+}
+
 int main()
 {
-    logInfo("Iris-Lite starting");
+    logInfo("Booting Iris-Lite");
 
     Config cfg;
     if (!loadConfig(cfg, "config/config.json"))
@@ -28,45 +46,30 @@ int main()
     if (!engine.initialize(cfg))
         return -1;
 
-    // ---------------- SAFE SHM OPEN (RETRY LOOP) ----------------
     int fd;
-    while (true)
-    {
-        fd = shm_open("iris_concern_indices", O_RDONLY, 0666);
-        if (fd >= 0)
-            break;
+    if (!waitForSHM("iris_concern_indices", fd))
+        return -1;
 
-        logWarn("Waiting for iris_concern_indices...");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+    void* ptr = mmap(nullptr, sizeof(SharedEventBuffer),
+        PROT_READ, MAP_SHARED, fd, 0);
+
+    if (ptr == MAP_FAILED)
+    {
+        logError("Failed SHM mapping");
+        return -1;
     }
 
-    void* ptr;
-    while (true)
-    {
-        ptr = mmap(nullptr, sizeof(SharedEventBuffer),
-            PROT_READ, MAP_SHARED, fd, 0);
+    auto* shared = (SharedEventBuffer*)ptr;
 
-        if (ptr != MAP_FAILED)
-            break;
+    uint64_t lastStart = 0, lastEnd = 0;
 
-        logWarn("Waiting for shared memory map...");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
+    logInfo("System fully online");
 
-    auto* shared = reinterpret_cast<SharedEventBuffer*>(ptr);
-
-    uint64_t lastStart = 0;
-    uint64_t lastEnd = 0;
-
-    // ---------------- MAIN LOOP ----------------
     while (true)
     {
         uint64_t start = shared->startFrame;
         uint64_t end = shared->endFrame;
-        
-        
 
-        // no data → sleep (IMPORTANT for CPU)
         if (start == 0 && end == 0)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -79,21 +82,13 @@ int main()
             continue;
         }
 
-
         lastStart = start;
         lastEnd = end;
 
-        logInfo("Frame indices received");
+        engine.enqueueEvent({ start, end, "external" });
 
-        EventWindow event{ start, end, "external" };
-        engine.enqueueEvent(event);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
 
-    munmap(ptr, sizeof(SharedEventBuffer));
-    close(fd);
-
-    engine.shutdown();
     return 0;
 }

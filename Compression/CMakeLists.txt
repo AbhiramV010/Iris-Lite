@@ -15,7 +15,7 @@ endif()
 # ---------------- SAFE OPTIMIZATION FLAGS ----------------
 # Let compiler auto-detect Pi CPU instead of forcing broken flags
 set(CMAKE_CXX_FLAGS_RELEASE
-    "-O3 -march=native -mtune=native"
+    "-O3 -mcpu=cortex-a72 -mtune=cortex-a72"
 )
 
 set(CMAKE_CXX_FLAGS_DEBUG

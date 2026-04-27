@@ -1,18 +1,12 @@
 #pragma once
-
 #include <cstdint>
 #include <vector>
-#include <string>
 
 class SharedFrameBuffer
 {
 public:
     bool initialize();
-
     bool isValid() const;
-
-    uint64_t getHead() const;
-    uint64_t getTail() const;
 
     bool getFrame(uint64_t index, std::vector<uint8_t>& outJpeg);
 

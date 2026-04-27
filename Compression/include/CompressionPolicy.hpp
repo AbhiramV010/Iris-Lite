@@ -3,19 +3,19 @@
 class CompressionPolicy
 {
 public:
-    float motion(float v);
-    float spatial(float v);
-    float face(bool detected);
-    float region(float v);
+    float motion(float v) const;
+    float spatial(float v) const;
+    float face(bool detected) const;
+    float region(float v) const;
 
     float perceptualScore(float motion,
         float spatial,
         float face,
-        float region);
+        float region) const;
 
-    int computeCRF(float score, int baseCRF);
-    int computeFPS(float score, int baseFPS);
+    int computeCRF(float score, int baseCRF) const;
+    int computeFPS(float score, int baseFPS) const;
 
 private:
-    float clamp01(float v);
+    static float clamp01(float v);
 };

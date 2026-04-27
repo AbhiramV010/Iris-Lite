@@ -1,12 +1,18 @@
 #pragma once
 
 #include <memory>
-#include <opencv2/opencv.hpp>
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <string>
 
 #include "Config.hpp"
 #include "CompressionPolicy.hpp"
 #include "H264Encoder.hpp"
 #include "SharedFrameBuffer.hpp"
+#include "SystemGovernor.hpp"
 
 struct EventWindow
 {
@@ -19,21 +25,29 @@ class CompressionEngine
 {
 public:
     bool initialize(const Config& cfg);
-    void processEvent(const EventWindow& event);
+    void enqueueEvent(const EventWindow& event);
+    void shutdown();
 
 private:
-    float computeRegionImportance(const cv::Mat& frame);
-    bool detectFace(const cv::Mat& frame);
+    void workerLoop();
+    void processEvent(const EventWindow& event);
+    float getPressureThrottle();
 
 private:
     Config config;
 
+    std::atomic<bool> stop{ false };
+    std::thread worker;
+
+    std::queue<EventWindow> queue;
+    std::mutex mtx;
+    std::condition_variable cv;
+
     std::unique_ptr<CompressionPolicy> policy;
     std::unique_ptr<H264Encoder> encoder;
     std::unique_ptr<SharedFrameBuffer> buffer;
+    std::unique_ptr<SystemGovernor> governor;
 
-    cv::CascadeClassifier faceCascade;
-
-    float lastScore = 0.0f;
+    float lastScore = 0.5f;
     float lastMotion = 0.0f;
 };

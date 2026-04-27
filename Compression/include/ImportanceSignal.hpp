@@ -3,9 +3,9 @@
 struct ImportanceSignal
 {
     float motion = 0.0f;
-    float edges = 0.0f;
-    float faces = 0.0f;
+    float spatial = 0.0f;
+    float face = 0.0f;
+    float region = 0.0f;
 
-    float global = 0.0f;
-    float confidence = 1.0f;
+    float score = 0.0f;
 };

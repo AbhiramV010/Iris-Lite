@@ -1,64 +1,49 @@
 #include "ImportanceEngine.hpp"
-#include "logging.hpp"
-
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
-#include <cmath>
 
-// ---------------- INIT ----------------
-ImportanceEngine::ImportanceEngine(int width, int height, const Config& cfg_)
-    : w(width), h(height), cfg(cfg_)
-{
-    logInfo("ImportanceEngine initialized");
+ImportanceEngine::ImportanceEngine(int w_, int h_, const Config& cfg_)
+    : w(w_), h(h_), cfg(cfg_) {
 }
 
-// ---------------- DESTRUCTOR (FIX LINKER ERROR) ----------------
-ImportanceEngine::~ImportanceEngine() = default;
-
-// ---------------- NORMALIZATION ----------------
-static float norm(const cv::Mat& m)
-{
-    return static_cast<float>(cv::mean(m)[0]) / 255.0f;
-}
-
-// ---------------- ANALYZE ----------------
-ImportanceSignal ImportanceEngine::analyze(
-    const cv::Mat& frame,
+ImportanceSignal ImportanceEngine::analyze(const cv::Mat& frame,
     const cv::Mat& prev)
 {
-    ImportanceSignal r{};
+    ImportanceSignal s;
 
-    if (frame.empty())
-        return r;
+    if (frame.empty()) return s;
 
-    cv::Mat gray, prevGray;
+    cv::Mat resized, gray;
+    cv::resize(frame, resized, cv::Size(w, h));
+    cv::cvtColor(resized, gray, cv::COLOR_BGR2GRAY);
 
-    // Downscale for Pi efficiency
-    cv::resize(frame, gray, cv::Size(w, h));
-    cv::cvtColor(gray, gray, cv::COLOR_BGR2GRAY);
-
+    // ---------------- MOTION ----------------
     if (!prev.empty())
     {
-        cv::resize(prev, prevGray, cv::Size(w, h));
-        cv::cvtColor(prevGray, prevGray, cv::COLOR_BGR2GRAY);
+        cv::Mat prevR, prevG;
+        cv::resize(prev, prevR, cv::Size(w, h));
+        cv::cvtColor(prevR, prevG, cv::COLOR_BGR2GRAY);
 
         cv::Mat diff;
-        cv::absdiff(gray, prevGray, diff);
+        cv::absdiff(gray, prevG, diff);
 
-        // smooth noise (motion stability)
-        cv::blur(diff, diff, cv::Size(5, 5));
+        float motion = cv::mean(diff)[0] / 255.0f;
 
-        r.motion = norm(diff);
+        // temporal smoothing
+        s.motion = 0.8f * prevMotion + 0.2f * motion;
+        prevMotion = s.motion;
     }
 
-    // temporal smoothing (prevents flicker)
-    r.global = std::clamp(
-        0.8f * prevGlobal + 0.2f * r.motion,
-        0.0f,
-        1.0f
-    );
+    // ---------------- SPATIAL ----------------
+    cv::Mat edges;
+    cv::Canny(gray, edges, 50, 150);
+    s.spatial = (float)cv::countNonZero(edges) /
+        (w * h);
 
-    prevGlobal = r.global;
+    // ---------------- REGION ----------------
+    cv::Rect center(w * 0.25, h * 0.25, w * 0.5, h * 0.5);
+    cv::Mat roi = gray(center);
+    s.region = cv::mean(roi)[0] / 255.0f;
 
-    return r;
+    return s;
 }

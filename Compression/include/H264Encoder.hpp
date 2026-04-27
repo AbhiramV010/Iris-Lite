@@ -17,15 +17,14 @@ public:
     bool isOpen() const { return ffmpegPipe != nullptr; }
 
 private:
+    std::string buildCommand(const std::string& outputPath, int crf);
+
+private:
     int width;
     int height;
     int fps;
     bool useHardware;
 
-    int currentCRF = 28;
-
     FILE* ffmpegPipe = nullptr;
-    std::string ffmpegCommand;
-
-    std::string buildCommand(const std::string& outputPath, int crf);
+    int currentCRF = 28;
 };

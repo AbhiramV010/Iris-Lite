@@ -1,5 +1,6 @@
 #include "SharedFrameBuffer.hpp"
 #include "SharedMemoryConfig.hpp"
+#include "logging.hpp"
 
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -7,89 +8,91 @@
 #include <thread>
 #include <chrono>
 #include <cstring>
-#include <vector>
 
 static constexpr const char* SHM_DATA = "iris_frame_buffer_data";
 static constexpr const char* SHM_SIZES = "iris_frame_sizes";
 static constexpr const char* SHM_HEAD = "iris_frame_head_tail";
 
-// ---------------- INIT ----------------
 bool SharedFrameBuffer::initialize()
 {
     bufferSize = FRAME_BUFFER_SIZE;
     slotSize = SLOT_SIZE;
+
     return mapMemory();
 }
 
-// ---------------- MAP MEMORY ----------------
+bool SharedFrameBuffer::isValid() const
+{
+    return frame_buffer && frame_sizes && head_tail;
+}
+
 bool SharedFrameBuffer::mapMemory()
 {
-    while ((fd_data = shm_open(SHM_DATA, O_RDONLY, 0666)) < 0)
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    auto waitOpen = [](const char* name)
+        {
+            int fd;
+            int tries = 0;
 
-    while ((fd_sizes = shm_open(SHM_SIZES, O_RDONLY, 0666)) < 0)
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            while ((fd = shm_open(name, O_RDONLY, 0666)) < 0)
+            {
+                if (++tries > 50)
+                {
+                    logError(std::string("SHM failed: ") + name);
+                    return -1;
+                }
 
-    while ((fd_head_tail = shm_open(SHM_HEAD, O_RDONLY, 0666)) < 0)
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
 
-    frame_buffer = (uint8_t*)mmap(
-        nullptr,
+            return fd;
+        };
+
+    fd_data = waitOpen(SHM_DATA);
+    fd_sizes = waitOpen(SHM_SIZES);
+    fd_head_tail = waitOpen(SHM_HEAD);
+
+    if (fd_data < 0 || fd_sizes < 0 || fd_head_tail < 0)
+        return false;
+
+    frame_buffer = (uint8_t*)mmap(nullptr,
         FRAME_BUFFER_SIZE * SLOT_SIZE,
-        PROT_READ,
-        MAP_SHARED,
-        fd_data,
-        0
-    );
+        PROT_READ, MAP_SHARED, fd_data, 0);
 
-    frame_sizes = (uint32_t*)mmap(
-        nullptr,
+    frame_sizes = (uint32_t*)mmap(nullptr,
         FRAME_BUFFER_SIZE * sizeof(uint32_t),
-        PROT_READ,
-        MAP_SHARED,
-        fd_sizes,
-        0
-    );
+        PROT_READ, MAP_SHARED, fd_sizes, 0);
 
-    head_tail = (uint64_t*)mmap(
-        nullptr,
+    head_tail = (uint64_t*)mmap(nullptr,
         2 * sizeof(uint64_t),
-        PROT_READ,
-        MAP_SHARED,
-        fd_head_tail,
-        0
-    );
+        PROT_READ, MAP_SHARED, fd_head_tail, 0);
 
     if (frame_buffer == MAP_FAILED ||
         frame_sizes == MAP_FAILED ||
         head_tail == MAP_FAILED)
     {
+        logError("mmap failed (SharedFrameBuffer)");
         return false;
     }
 
+    logInfo("SharedFrameBuffer ready");
     return true;
 }
 
-// ---------------- GET FRAME (FIX LINKER ERROR) ----------------
-bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& outJpeg)
+bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& out)
 {
-    if (!frame_buffer || !frame_sizes)
-        return false;
+    if (!isValid()) return false;
 
     size_t slot = index % FRAME_BUFFER_SIZE;
 
     uint32_t size = frame_sizes[slot];
-
     if (size == 0 || size > SLOT_SIZE)
         return false;
 
-    outJpeg.resize(size);
+    out.resize(size);
 
-    std::memcpy(
-        outJpeg.data(),
+    std::memcpy(out.data(),
         frame_buffer + slot * SLOT_SIZE,
-        size
-    );
+        size);
 
     return true;
 }

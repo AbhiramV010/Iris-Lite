@@ -2,18 +2,20 @@
 #include "logging.hpp"
 
 #include <sstream>
-#include <cstdlib>
+#include <cstdio>
 
-H264Encoder::H264Encoder(int w, int h, int fps, bool hw)
-    : width(w), height(h), fps(fps), useHardware(hw) {
+H264Encoder::H264Encoder(int w, int h, int fps_, bool hw)
+    : width(w), height(h), fps(fps_), useHardware(hw)
+{
 }
 
-H264Encoder::~H264Encoder() { close(); }
-
-bool H264Encoder::open(const std::string& path, int crf)
+H264Encoder::~H264Encoder()
 {
-    currentCRF = crf;
+    close();
+}
 
+std::string H264Encoder::buildCommand(const std::string& path, int crf)
+{
     std::ostringstream cmd;
 
     cmd << "ffmpeg -y -f rawvideo -pix_fmt bgr24 "
@@ -22,14 +24,25 @@ bool H264Encoder::open(const std::string& path, int crf)
         << "-c:v libx264 -preset ultrafast -crf " << crf
         << " -pix_fmt yuv420p " << path;
 
-    ffmpegPipe = popen(cmd.str().c_str(), "w");
+    return cmd.str();
+}
+
+bool H264Encoder::open(const std::string& path, int crf)
+{
+    std::string cmd = buildCommand(path, crf);
+
+    ffmpegPipe = popen(cmd.c_str(), "w");
+
+    if (!ffmpegPipe)
+        logError("FFmpeg pipe failed");
 
     return ffmpegPipe != nullptr;
 }
 
 bool H264Encoder::writeFrame(const cv::Mat& frame)
 {
-    if (!ffmpegPipe || frame.empty()) return false;
+    if (!ffmpegPipe || frame.empty())
+        return false;
 
     cv::Mat resized;
     cv::resize(frame, resized, cv::Size(width, height));
@@ -44,5 +57,6 @@ void H264Encoder::close()
     {
         pclose(ffmpegPipe);
         ffmpegPipe = nullptr;
+        logInfo("Encoder closed");
     }
 }
