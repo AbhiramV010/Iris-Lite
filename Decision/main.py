@@ -84,11 +84,12 @@ if __name__ == "__main__":
                 end_ts = datetime.datetime.combine(today, datetime.time.fromisoformat(event.endTime)).timestamp()
                 curr_head = int(head_tail[0])
 
-                start_offset = max(0, int((now - start_ts) * FPS))
-                end_offset = max(0, int((now - end_ts) * FPS))
+                padding_frames = 5 * FPS
+                start_offset = int((now - start_ts) * FPS) + padding_frames
+                end_offset = int((now - end_ts) * FPS) - padding_frames
 
-                concern_indices[0] = (curr_head - start_offset) % FRAME_BUFFER_SIZE
-                concern_indices[1] = (curr_head - end_offset) % FRAME_BUFFER_SIZE
+                concern_indices[0] = (curr_head - max(0, start_offset)) % FRAME_BUFFER_SIZE
+                concern_indices[1] = (curr_head - max(0, end_offset)) % FRAME_BUFFER_SIZE
             except: pass
 
         _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 45])

@@ -21,7 +21,7 @@ try:
 except FileNotFoundError:
     raise OSError("Camera not plugged in, OR main.py & startCamera.py aren't running")
 
-SENSITIVITY = 0.25
+SENSITIVITY = 0.10
 LUM_THRESH = 90     
 ALPHA = 0.05        
 
