@@ -1,15 +1,18 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
+
 #include <opencv2/opencv.hpp>
 #include <chrono>
+#include <thread>
+#include <algorithm>
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
     config = cfg;
 
     policy = std::make_unique<CompressionPolicy>();
-    buffer = std::make_unique<SharedFrameBuffer>();
     governor = std::make_unique<SystemGovernor>();
+    buffer = std::make_unique<SharedFrameBuffer>();
 
     if (!buffer->initialize())
     {
@@ -24,14 +27,22 @@ bool CompressionEngine::initialize(const Config& cfg)
         true
     );
 
+    stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
+    logInfo("CompressionEngine initialized");
     return true;
 }
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
     std::lock_guard<std::mutex> lock(mtx);
+
+    if (queue.size() > 100)
+    {
+        queue.pop();
+        logWarn("Compression queue overflow - dropping oldest event");
+    }
 
     queue.push(event);
     cv.notify_one();
@@ -49,30 +60,154 @@ void CompressionEngine::shutdown()
         encoder->close();
 }
 
-float CompressionEngine::computeTemporalWeight(uint64_t frame, uint64_t peak)
+float CompressionEngine::getPressureThrottle()
 {
-    float dist = std::abs((int64_t)frame - (int64_t)peak);
-
-    // gaussian-like decay
-    return std::exp(-(dist * dist) / 200.0f);
+    return governor ? governor->computePressure() : 0.0f;
 }
 
-FrameImportance CompressionEngine::evaluateFrame(uint64_t index, const EventWindow& event)
+static inline uint64_t normalizeIndex(uint64_t idx, uint64_t bufferSize)
 {
-    std::vector<uint8_t> jpeg;
-    if (!buffer->getFrame(index, jpeg))
-        return { 0.0f, false };
+    return bufferSize ? (idx % bufferSize) : idx;
+}
 
-    cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
-    if (frame.empty())
-        return { 0.0f, false };
+void CompressionEngine::workerLoop()
+{
+    while (!stop)
+    {
+        EventWindow event;
 
-    cv::Mat gray;
-    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        {
+            std::unique_lock<std::mutex> lock(mtx);
+            cv.wait(lock, [&] { return stop || !queue.empty(); });
 
-    float motion = 0.0f;
-    float spatial = cv::mean(cv::abs(gray))[0] / 255.0f;
+            if (stop && queue.empty())
+                return;
 
+            event = queue.front();
+            queue.pop();
+        }
+
+        if (getPressureThrottle() > 0.85f)
+            std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
+        processEvent(event);
+    }
+}
+
+void CompressionEngine::processEvent(const EventWindow& event)
+{
+    if (!buffer || !encoder)
+        return;
+
+    cv::Mat prevFrame;
+    bool encoderOpen = false;
+
+    // FIX: safe output path (required for competition reproducibility)
+    std::string path =
+        "/mnt/clipDrive/clips/iris_" +
+        std::to_string(event.startFrame) + "_" +
+        std::to_string(event.endFrame) + ".mp4";
+
+    uint64_t start = event.startFrame;
+    uint64_t end   = event.endFrame;
+
+    // FIX: normalize + enforce ordering
+    start = normalizeIndex(start, FRAME_BUFFER_SIZE);
+    end   = normalizeIndex(end, FRAME_BUFFER_SIZE);
+
+    if (end <= start)
+        end = start + 1;
+
+    for (uint64_t i = start; i != end && !stop; i = (i + 1) % FRAME_BUFFER_SIZE)
+    {
+        std::vector<uint8_t> jpeg;
+
+        bool ok = buffer->getFrame(i, jpeg);
+
+        cv::Mat frame;
+
+        // FIX: NO silent skipping (prevents missing event data loss)
+        if (!ok || jpeg.empty())
+        {
+            if (!prevFrame.empty())
+            {
+                frame = prevFrame.clone();  // temporal hold repair
+            }
+            else
+            {
+                continue;
+            }
+        }
+        else
+        {
+            frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+            if (frame.empty())
+            {
+                if (!prevFrame.empty())
+                    frame = prevFrame.clone();
+                else
+                    continue;
+            }
+        }
+
+        // ---------------- MOTION ----------------
+        float motion = 0.0f;
+
+        if (!prevFrame.empty())
+        {
+            cv::Mat diff;
+            cv::absdiff(frame, prevFrame, diff);
+            motion = cv::mean(diff)[0] / 255.0f;
+        }
+
+        lastMotion = 0.85f * lastMotion + 0.15f * motion;
+
+        // ---------------- SPATIAL ----------------
+        cv::Mat gray, edges;
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        cv::Canny(gray, edges, 50, 150);
+
+        float spatial = static_cast<float>(cv::countNonZero(edges)) /
+                        (frame.rows * frame.cols + 1e-6f);
+
+        // ---------------- SENSOR BOOST HOOK ----------------
+        // (safe default = 0.5, since Python mapping is unknown)
+        float sensorBoost = 0.5f;
+
+        float importance = policy->importanceScore(
+            policy->motion(lastMotion),
+            policy->spatial(spatial),
+            sensorBoost
+        );
+
+        lastScore = 0.85f * lastScore + 0.15f * importance;
+
+        int crf = policy->computeCRF(lastScore);
+
+        // ---------------- ENCODER SAFETY ----------------
+        if (!encoderOpen)
+        {
+            if (!encoder->open(path, crf))
+            {
+                logError("Failed to open encoder");
+                return;
+            }
+            encoderOpen = true;
+        }
+
+        if (!frame.empty())
+        {
+            encoder->writeFrame(frame);
+        }
+
+        prevFrame = frame;
+
+        // FIX: prevents ffmpeg starvation under burst events
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    encoder->close();
+}
     float temporal = computeTemporalWeight(index, (event.startFrame + event.endFrame) / 2);
 
     float score = policy->importanceScore(
