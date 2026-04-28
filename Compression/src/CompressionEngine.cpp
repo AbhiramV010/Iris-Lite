@@ -5,6 +5,7 @@
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
+#include <algorithm>
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -24,7 +25,7 @@ bool CompressionEngine::initialize(const Config& cfg)
         cfg.encodeWidth,
         cfg.encodeHeight,
         cfg.fps,
-        true // try hardware first
+        true
     );
 
     stop = false;
@@ -41,7 +42,7 @@ void CompressionEngine::enqueueEvent(const EventWindow& event)
     if (queue.size() > 100)
     {
         queue.pop();
-        logWarn("Queue overflow drop");
+        logWarn("Event queue overflow - dropping oldest");
     }
 
     queue.push(event);
@@ -60,7 +61,7 @@ void CompressionEngine::shutdown()
         encoder->close();
 }
 
-float CompressionEngine::getPressureThrottle()
+float CompressionEngine::getPressureThrottle() const
 {
     return governor ? governor->computePressure() : 0.0f;
 }
@@ -82,11 +83,40 @@ void CompressionEngine::workerLoop()
             queue.pop();
         }
 
+        // ───── pressure ONLY affects scheduling ─────
         if (getPressureThrottle() > 0.85f)
-            std::this_thread::sleep_for(std::chrono::milliseconds(80));
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
 
         processEvent(event);
     }
+}
+
+FrameImportance CompressionEngine::evaluateFrame(uint64_t index, const EventWindow& event)
+{
+    float temporal = computeTemporalWeight(
+        index,
+        (event.startFrame + event.endFrame) / 2
+    );
+
+    float motion = std::clamp(lastMotion, 0.0f, 1.0f);
+
+    float spatial = 0.5f; // safe baseline (can be upgraded later with edges)
+
+    float importance = policy->importanceScore(
+        motion,
+        spatial,
+        temporal
+    );
+
+    bool peak = importance > 0.75f;
+
+    return { importance, peak };
+}
+
+float CompressionEngine::computeTemporalWeight(uint64_t frame, uint64_t peak)
+{
+    float dist = std::abs((int64_t)frame - (int64_t)peak);
+    return std::exp(-dist / 120.0f); // smooth perceptual falloff
 }
 
 void CompressionEngine::processEvent(const EventWindow& event)
@@ -102,39 +132,19 @@ void CompressionEngine::processEvent(const EventWindow& event)
     cv::Mat prevFrame;
     bool opened = false;
 
-    uint64_t frameCount = 0;
-
     for (uint64_t i = event.startFrame; i < event.endFrame && !stop; ++i)
     {
         uint64_t slot = i % FRAME_BUFFER_SIZE;
 
         std::vector<uint8_t> jpeg;
-        bool ok = buffer->getFrame(slot, jpeg);
+        if (!buffer->getFrame(slot, jpeg))
+            continue;
 
-        cv::Mat frame;
+        cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+        if (frame.empty())
+            continue;
 
-        // -------- FRAME RECOVERY (CRITICAL) --------
-        if (!ok || jpeg.empty())
-        {
-            if (!prevFrame.empty())
-                frame = prevFrame.clone();
-            else
-                continue;
-        }
-        else
-        {
-            frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
-
-            if (frame.empty())
-            {
-                if (!prevFrame.empty())
-                    frame = prevFrame.clone();
-                else
-                    continue;
-            }
-        }
-
-        // -------- MOTION --------
+        // ───── MOTION ─────
         float motion = 0.0f;
 
         if (!prevFrame.empty())
@@ -146,26 +156,13 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
         lastMotion = 0.85f * lastMotion + 0.15f * motion;
 
-        // -------- SPATIAL --------
-        cv::Mat gray, edges;
-        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-        cv::Canny(gray, edges, 50, 150);
+        // ───── IMPORTANCE ─────
+        FrameImportance imp = evaluateFrame(i, event);
+        lastImportance = 0.85f * lastImportance + 0.15f * imp.score;
 
-        float spatial = static_cast<float>(cv::countNonZero(edges)) /
-                        (frame.rows * frame.cols + 1e-6f);
+        int crf = policy->computeCRF(lastImportance);
 
-        // -------- IMPORTANCE --------
-        float importance = policy->importanceScore(
-            policy->motion(lastMotion),
-            policy->spatial(spatial),
-            0.5f // safe default sensor boost
-        );
-
-        lastScore = 0.85f * lastScore + 0.15f * importance;
-
-        int crf = policy->computeCRF(lastScore);
-
-        // -------- ENCODER --------
+        // ───── ENCODER ─────
         if (!opened)
         {
             if (!encoder->open(path, crf))
@@ -177,15 +174,12 @@ void CompressionEngine::processEvent(const EventWindow& event)
         }
 
         encoder->writeFrame(frame);
-
         prevFrame = frame;
-        frameCount++;
 
-        // small sleep to avoid ffmpeg overload
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
     encoder->close();
 
-    logInfo("Clip saved with frames: " + std::to_string(frameCount));
+    logInfo("Event encoded: " + event.trigger);
 }
