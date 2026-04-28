@@ -3,6 +3,7 @@
 
 #include <sstream>
 #include <cstdio>
+#include <cstdlib>
 
 H264Encoder::H264Encoder(int w, int h, int fps_, bool hw)
     : width(w), height(h), fps(fps_), useHardware(hw)
@@ -20,20 +21,28 @@ std::string H264Encoder::buildCommand(const std::string& path, int crf)
 
     if (useHardware)
     {
-        cmd << "ffmpeg -y -f rawvideo -pix_fmt bgr24 "
+        // Raspberry Pi hardware encoder
+        cmd << "ffmpeg -y "
+            << "-f rawvideo -pix_fmt bgr24 "
             << "-s " << width << "x" << height << " "
             << "-r " << fps << " -i - "
+            << "-an "
             << "-c:v h264_v4l2m2m "
-            << "-b:v 2M "
+            << "-b:v 2500k "
             << "-pix_fmt yuv420p "
             << path;
     }
     else
     {
-        cmd << "ffmpeg -y -f rawvideo -pix_fmt bgr24 "
+        // Software fallback
+        cmd << "ffmpeg -y "
+            << "-f rawvideo -pix_fmt bgr24 "
             << "-s " << width << "x" << height << " "
             << "-r " << fps << " -i - "
-            << "-c:v libx264 -preset ultrafast -crf " << crf
+            << "-an "
+            << "-c:v libx264 "
+            << "-preset veryfast "
+            << "-crf " << crf << " "
             << "-pix_fmt yuv420p "
             << path;
     }
@@ -43,6 +52,8 @@ std::string H264Encoder::buildCommand(const std::string& path, int crf)
 
 bool H264Encoder::open(const std::string& path, int crf)
 {
+    currentCRF = crf;
+
     std::string cmd = buildCommand(path, crf);
 
     ffmpegPipe = popen(cmd.c_str(), "w");
@@ -50,48 +61,17 @@ bool H264Encoder::open(const std::string& path, int crf)
     if (!ffmpegPipe)
     {
         logError("FFmpeg pipe failed");
-        return false;
+
+        // FALLBACK TO SOFTWARE if hardware fails
+        if (useHardware)
+        {
+            logWarn("Falling back to software encoder");
+
+            useHardware = false;
+            cmd = buildCommand(path, crf);
+            ffmpegPipe = popen(cmd.c_str(), "w");
+        }
     }
-
-    logInfo("Encoder started: " + path);
-    return true;
-}
-
-bool H264Encoder::writeFrame(const cv::Mat& frame)
-{
-    if (!ffmpegPipe || frame.empty())
-        return false;
-
-    cv::Mat resized;
-    cv::resize(frame, resized, cv::Size(width, height));
-
-    size_t written = fwrite(resized.data, 1, resized.total() * 3, ffmpegPipe);
-
-    return written > 0;
-}
-
-void H264Encoder::close()
-{
-    if (ffmpegPipe)
-    {
-        pclose(ffmpegPipe);
-        ffmpegPipe = nullptr;
-        logInfo("Encoder closed");
-    }
-}    cv::resize(frame, resized, cv::Size(width, height));
-
-    fwrite(resized.data, 1, resized.total() * 3, ffmpegPipe);
-    return true;
-}
-
-void H264Encoder::close()
-{
-    if (ffmpegPipe)
-    {
-        pclose(ffmpegPipe);
-        ffmpegPipe = nullptr;
-    }
-}        logError("FFmpeg pipe failed");
 
     return ffmpegPipe != nullptr;
 }
@@ -104,17 +84,19 @@ bool H264Encoder::writeFrame(const cv::Mat& frame)
     cv::Mat resized;
     cv::resize(frame, resized, cv::Size(width, height));
 
-    fwrite(resized.data, 1, resized.total() * 3, ffmpegPipe);
-    return true;
+    size_t written = fwrite(resized.data, 1, resized.total() * 3, ffmpegPipe);
+
+    return written == resized.total() * 3;
 }
 
 void H264Encoder::close()
 {
- 
-if (ffmpegPipe)
+    if (ffmpegPipe)
     {
+        fflush(ffmpegPipe);
         pclose(ffmpegPipe);
         ffmpegPipe = nullptr;
+
         logInfo("Encoder closed");
     }
 }
