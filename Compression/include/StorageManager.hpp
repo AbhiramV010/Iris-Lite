@@ -6,6 +6,9 @@
 class StorageManager
 {
 public:
-    std::string buildPath(uint64_t startFrame,
-                          uint64_t endFrame);
+    void ensureReady();
+
+    std::string buildPath(uint64_t start,
+                          uint64_t end,
+                          const std::string& tag = "");
 };
