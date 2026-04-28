@@ -5,7 +5,6 @@ from captureinfo import CaptureClass
 from multiprocessing.connection import Client
 from multiprocessing import shared_memory
 from sensor_helper import *
-import sys
 import time
 import warnings
 

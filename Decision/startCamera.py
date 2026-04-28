@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from multiprocessing import shared_memory
-import sys
 
 W, H = 1920, 1080
 SHM_NAME = "iris_live_frame"

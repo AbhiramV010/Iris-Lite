@@ -6,7 +6,6 @@ from multiprocessing import shared_memory
 import datetime
 from collections import deque
 from sensor_helper import *
-import sys
 import time
 import warnings
 
