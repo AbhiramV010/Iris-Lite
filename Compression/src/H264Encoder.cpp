@@ -1,5 +1,6 @@
 #include "H264Encoder.hpp"
 #include "logging.hpp"
+
 #include <sstream>
 #include <cstdio>
 
@@ -24,33 +25,7 @@ std::string H264Encoder::buildCommand(const std::string& path, int crf)
             << "-r " << fps << " -i - "
             << "-c:v h264_v4l2m2m "
             << "-b:v 2M "
-            << path;
-    }
-    else
-    {
-        cmd << "ffmpeg -y -f rawvideo -pix_fmt bgr24 "
-            << "-s " << width << "x" << height << " "
-            << "-r " << fps << " -i - "
-            << "-c:v libx264 -preset veryfast -crf " << crf
-            << " -pix_fmt yuv420p "
-            << path;
-    }
-
-    return cmd.str();
-}
-
-bool H264Encoder::open(const std::string& path, int crf)
-{
-   std::string H264Encoder::buildCommand(const std::string& path, int crf)
-{
-    std::ostringstream cmd;
-
-    if (useHardware)
-    {
-        cmd << "ffmpeg -y -f rawvideo -pix_fmt bgr24 "
-            << "-s " << width << "x" << height << " "
-            << "-r " << fps << " -i - "
-            << "-c:v h264_v4l2m2m -b:v 2M "
+            << "-pix_fmt yuv420p "
             << path;
     }
     else
@@ -59,20 +34,51 @@ bool H264Encoder::open(const std::string& path, int crf)
             << "-s " << width << "x" << height << " "
             << "-r " << fps << " -i - "
             << "-c:v libx264 -preset ultrafast -crf " << crf
-            << " -pix_fmt yuv420p "
+            << "-pix_fmt yuv420p "
             << path;
     }
 
     return cmd.str();
-} 
+}
+
+bool H264Encoder::open(const std::string& path, int crf)
+{
+    std::string cmd = buildCommand(path, crf);
+
+    ffmpegPipe = popen(cmd.c_str(), "w");
+
+    if (!ffmpegPipe)
+    {
+        logError("FFmpeg pipe failed");
+        return false;
+    }
+
+    logInfo("Encoder started: " + path);
+    return true;
 }
 
 bool H264Encoder::writeFrame(const cv::Mat& frame)
 {
-    if (!ffmpegPipe) return false;
+    if (!ffmpegPipe || frame.empty())
+        return false;
 
     cv::Mat resized;
     cv::resize(frame, resized, cv::Size(width, height));
+
+    size_t written = fwrite(resized.data, 1, resized.total() * 3, ffmpegPipe);
+
+    return written > 0;
+}
+
+void H264Encoder::close()
+{
+    if (ffmpegPipe)
+    {
+        pclose(ffmpegPipe);
+        ffmpegPipe = nullptr;
+        logInfo("Encoder closed");
+    }
+}    cv::resize(frame, resized, cv::Size(width, height));
 
     fwrite(resized.data, 1, resized.total() * 3, ffmpegPipe);
     return true;
