@@ -1,12 +1,11 @@
 #pragma once
+
 #include <string>
+#include <cstdint>
 
 class StorageManager
 {
 public:
     std::string buildPath(uint64_t startFrame,
-                          uint64_t endFrame,
-                          const std::string& tag);
-
-    void ensureReady();
+                          uint64_t endFrame);
 };
