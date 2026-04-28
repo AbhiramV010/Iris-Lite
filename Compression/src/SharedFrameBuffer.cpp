@@ -11,7 +11,7 @@
 
 static constexpr const char* SHM_DATA = "iris_frame_buffer_data";
 static constexpr const char* SHM_SIZES = "iris_frame_sizes";
-static constexpr const char* SHM_HEAD = "iris_frame_head_tail";
+static constexpr const char* SHM_HEAD  = "iris_frame_head_tail";
 
 bool SharedFrameBuffer::initialize()
 {
@@ -37,7 +37,7 @@ uint64_t SharedFrameBuffer::getTail() const
 
 bool SharedFrameBuffer::mapMemory()
 {
-    auto openWait = [](const char* name)
+    auto openWait = [](const char* name) -> int
     {
         int fd;
         int tries = 0;
@@ -59,22 +59,40 @@ bool SharedFrameBuffer::mapMemory()
     if (fd_data < 0 || fd_sizes < 0 || fd_head_tail < 0)
         return false;
 
-    frame_buffer = (uint8_t*)mmap(nullptr,
-        FRAME_BUFFER_SIZE * SLOT_SIZE,
-        PROT_READ, MAP_SHARED, fd_data, 0);
+    frame_buffer = static_cast<uint8_t*>(
+        mmap(nullptr,
+            FRAME_BUFFER_SIZE * SLOT_SIZE,
+            PROT_READ,
+            MAP_SHARED,
+            fd_data,
+            0)
+    );
 
-    frame_sizes = (uint32_t*)mmap(nullptr,
-        FRAME_BUFFER_SIZE * sizeof(uint32_t),
-        PROT_READ, MAP_SHARED, fd_sizes, 0);
+    frame_sizes = static_cast<uint32_t*>(
+        mmap(nullptr,
+            FRAME_BUFFER_SIZE * sizeof(uint32_t),
+            PROT_READ,
+            MAP_SHARED,
+            fd_sizes,
+            0)
+    );
 
-    head_tail = (uint64_t*)mmap(nullptr,
-        2 * sizeof(uint64_t),
-        PROT_READ, MAP_SHARED, fd_head_tail, 0);
+    head_tail = static_cast<uint64_t*>(
+        mmap(nullptr,
+            2 * sizeof(uint64_t),
+            PROT_READ,
+            MAP_SHARED,
+            fd_head_tail,
+            0)
+    );
 
     if (frame_buffer == MAP_FAILED ||
         frame_sizes == MAP_FAILED ||
         head_tail == MAP_FAILED)
+    {
+        logError("SharedFrameBuffer mmap failed");
         return false;
+    }
 
     logInfo("SharedFrameBuffer ready");
     return true;
@@ -82,25 +100,42 @@ bool SharedFrameBuffer::mapMemory()
 
 bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& out)
 {
-    if (!isValid()) return false;
+    if (!isValid())
+        return false;
 
     uint64_t head = getHead();
 
-    // safety: reject stale frames
+    // ---------------------------------------------------------
+    // SAFE RANGE CHECK (prevents stale or future frame reads)
+    // ---------------------------------------------------------
+
+    // Too old → likely overwritten
     if (index + FRAME_BUFFER_SIZE < head)
+        return false;
+
+    // Too new → not yet written
+    if (index > head)
         return false;
 
     size_t slot = index % FRAME_BUFFER_SIZE;
     uint32_t size = frame_sizes[slot];
 
+    // ---------------------------------------------------------
+    // VALIDITY CHECK (protect against partial writes)
+    // ---------------------------------------------------------
     if (size == 0 || size > SLOT_SIZE)
         return false;
 
+    // ---------------------------------------------------------
+    // COPY FRAME DATA
+    // ---------------------------------------------------------
     out.resize(size);
 
-    std::memcpy(out.data(),
+    std::memcpy(
+        out.data(),
         frame_buffer + slot * SLOT_SIZE,
-        size);
+        size
+    );
 
     return true;
-        }
+}
