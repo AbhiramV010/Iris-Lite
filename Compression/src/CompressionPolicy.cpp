@@ -9,40 +9,43 @@ float CompressionPolicy::clamp01(float v) const
 
 float CompressionPolicy::motion(float v) const
 {
-    return clamp01(std::pow(v, 0.8f)); // amplify small motion
+    return clamp01(v);
 }
 
 float CompressionPolicy::spatial(float v) const
 {
-    return clamp01(std::pow(v, 1.15f)); // suppress noise edges
+    return clamp01(v);
+}
+
+float CompressionPolicy::face(bool detected) const
+{
+    return detected ? 0.4f : 0.0f;
 }
 
 float CompressionPolicy::region(float v) const
 {
-    return clamp01(v * 0.4f); // stronger center weighting
+    return clamp01(v) * 0.3f;
 }
 
 float CompressionPolicy::importanceScore(float m,
     float s,
-    float r,
     float t) const
 {
-    // perceptual weighting tuned for human attention
-    float raw =
-        0.5f * m +
-        0.25f * s +
-        0.15f * r +
-        0.10f * t;
+    float raw = 0.55f * m + 0.35f * s + 0.10f * t;
 
-    // non-linear perceptual curve
-    float score = std::log1p(raw * 9.0f) / std::log1p(9.0f);
-
-    return clamp01(score);
+    // perceptual compression curve
+    return std::log1p(raw * 6.0f) / std::log1p(6.0f);
 }
 
 int CompressionPolicy::computeCRF(float importance) const
 {
-    int shift = static_cast<int>((1.0f - importance) * 18.0f);
+    int shift = static_cast<int>((1.0f - importance) * 12.0f);
+    return std::clamp(22 + shift, 18, 35);
+}
 
-    return std::clamp(20 + shift, 18, 38);
+int CompressionPolicy::computeFPS(float importance) const
+{
+    if (importance > 0.75f) return 24;
+    if (importance > 0.45f) return 15;
+    return 8;
 }
