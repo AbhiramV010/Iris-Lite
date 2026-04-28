@@ -52,6 +52,7 @@ set(SOURCES
     src/SharedFrameBuffer.cpp
     src/logging.cpp
     src/SystemGovernor.cpp
+    src/StorageManager.cpp
 )
 
 # ---------------- EXECUTABLE ----------------
