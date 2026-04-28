@@ -2,6 +2,10 @@
 
 #include <cstdint>
 
-// 5-minute circular buffer @ 24fps
-static constexpr uint64_t FRAME_BUFFER_SIZE = 24 * 60 * 5;
-static constexpr uint64_t SLOT_SIZE = 1 << 20;
+#ifndef FRAME_BUFFER_SIZE
+static constexpr std::uint64_t FRAME_BUFFER_SIZE = 24ULL * 60ULL * 5ULL;
+#endif
+
+#ifndef SLOT_SIZE
+static constexpr std::uint64_t SLOT_SIZE = 1ULL << 20;
+#endif
