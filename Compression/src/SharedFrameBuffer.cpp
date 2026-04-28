@@ -37,28 +37,24 @@ uint64_t SharedFrameBuffer::getTail() const
 
 bool SharedFrameBuffer::mapMemory()
 {
-    auto waitOpen = [](const char* name)
+    auto openWait = [](const char* name)
+    {
+        int fd;
+        int tries = 0;
+
+        while ((fd = shm_open(name, O_RDONLY, 0666)) < 0)
         {
-            int fd;
-            int tries = 0;
+            if (++tries > 50)
+                return -1;
 
-            while ((fd = shm_open(name, O_RDONLY, 0666)) < 0)
-            {
-                if (++tries > 100)
-                {
-                    logError(std::string("SHM failed: ") + name);
-                    return -1;
-                }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        return fd;
+    };
 
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-
-            return fd;
-        };
-
-    fd_data = waitOpen(SHM_DATA);
-    fd_sizes = waitOpen(SHM_SIZES);
-    fd_head_tail = waitOpen(SHM_HEAD);
+    fd_data = openWait(SHM_DATA);
+    fd_sizes = openWait(SHM_SIZES);
+    fd_head_tail = openWait(SHM_HEAD);
 
     if (fd_data < 0 || fd_sizes < 0 || fd_head_tail < 0)
         return false;
@@ -75,18 +71,28 @@ bool SharedFrameBuffer::mapMemory()
         2 * sizeof(uint64_t),
         PROT_READ, MAP_SHARED, fd_head_tail, 0);
 
-    return frame_buffer != MAP_FAILED &&
-        frame_sizes != MAP_FAILED &&
-        head_tail != MAP_FAILED;
+    if (frame_buffer == MAP_FAILED ||
+        frame_sizes == MAP_FAILED ||
+        head_tail == MAP_FAILED)
+        return false;
+
+    logInfo("SharedFrameBuffer ready");
+    return true;
 }
 
 bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& out)
 {
     if (!isValid()) return false;
 
-    size_t slot = index % FRAME_BUFFER_SIZE;
+    uint64_t head = getHead();
 
+    // safety: reject stale frames
+    if (index + FRAME_BUFFER_SIZE < head)
+        return false;
+
+    size_t slot = index % FRAME_BUFFER_SIZE;
     uint32_t size = frame_sizes[slot];
+
     if (size == 0 || size > SLOT_SIZE)
         return false;
 
@@ -97,4 +103,4 @@ bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& out)
         size);
 
     return true;
-}
+        }
