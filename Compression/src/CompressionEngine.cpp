@@ -5,7 +5,10 @@
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
+<<<<<<< Updated upstream
 #include <algorithm>
+=======
+>>>>>>> Stashed changes
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -38,6 +41,7 @@ bool CompressionEngine::initialize(const Config& cfg)
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
     std::lock_guard<std::mutex> lock(mtx);
+<<<<<<< Updated upstream
 
     if (queue.size() > 100)
     {
@@ -45,6 +49,8 @@ void CompressionEngine::enqueueEvent(const EventWindow& event)
         logWarn("Event queue overflow - dropping oldest");
     }
 
+=======
+>>>>>>> Stashed changes
     queue.push(event);
     cv.notify_one();
 }
@@ -63,7 +69,12 @@ void CompressionEngine::shutdown()
 
 float CompressionEngine::getPressureThrottle() const
 {
+<<<<<<< Updated upstream
     return governor ? governor->computePressure() : 0.0f;
+=======
+    float dist = std::abs((int64_t)frame - (int64_t)peak);
+    return std::exp(-(dist * dist) / 80.0f); // tighter focus
+>>>>>>> Stashed changes
 }
 
 void CompressionEngine::workerLoop()
@@ -132,11 +143,20 @@ void CompressionEngine::processEvent(const EventWindow& event)
     cv::Mat prevFrame;
     bool opened = false;
 
+<<<<<<< Updated upstream
     for (uint64_t i = event.startFrame; i < event.endFrame && !stop; ++i)
+=======
+    float lastImportance = 0.5f;
+
+    uint64_t peakFrame = (event.startFrame + event.endFrame) / 2;
+
+    for (uint64_t i = event.startFrame; i < event.endFrame && !stop; i++)
+>>>>>>> Stashed changes
     {
         uint64_t slot = i % FRAME_BUFFER_SIZE;
 
         std::vector<uint8_t> jpeg;
+<<<<<<< Updated upstream
         if (!buffer->getFrame(slot, jpeg))
             continue;
 
@@ -145,6 +165,34 @@ void CompressionEngine::processEvent(const EventWindow& event)
             continue;
 
         // ───── MOTION ─────
+=======
+        bool ok = buffer->getFrame(slot, jpeg);
+
+        cv::Mat frame;
+
+        // -------- FRAME RECOVERY (CRITICAL) --------
+        if (!ok || jpeg.empty())
+        {
+            if (!prevFrame.empty())
+                frame = prevFrame.clone();
+            else
+                continue;
+        }
+        else
+        {
+            frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+
+            if (frame.empty())
+            {
+                if (!prevFrame.empty())
+                    frame = prevFrame.clone();
+                else
+                    continue;
+            }
+        }
+
+        // -------- MOTION --------
+>>>>>>> Stashed changes
         float motion = 0.0f;
 
         if (!prevFrame.empty())
@@ -154,6 +202,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
             motion = cv::mean(diff)[0] / 255.0f;
         }
 
+<<<<<<< Updated upstream
         lastMotion = 0.85f * lastMotion + 0.15f * motion;
 
         // ───── IMPORTANCE ─────
@@ -163,6 +212,45 @@ void CompressionEngine::processEvent(const EventWindow& event)
         int crf = policy->computeCRF(lastImportance);
 
         // ───── ENCODER ─────
+=======
+        // -------- SALIENCY (LIGHTWEIGHT) --------
+        cv::Mat gray;
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+
+        cv::Mat small;
+        cv::resize(gray, small, cv::Size(64, 36));
+
+        float saliency = cv::mean(small)[0] / 255.0f;
+
+        // -------- SPATIAL (EDGES) --------
+        cv::Mat edges;
+        cv::Canny(gray, edges, 50, 150);
+
+        float spatial = static_cast<float>(cv::countNonZero(edges)) /
+            (frame.rows * frame.cols + 1e-6f);
+
+        float edgeBoost = std::min(1.0f, spatial * 1.5f);
+
+        // -------- TEMPORAL --------
+        float temporal = computeTemporalWeight(i, peakFrame);
+
+        // -------- IMPORTANCE --------
+        float importance = policy->importanceScore(
+            0.6f * motion + 0.4f * saliency,
+            spatial,
+            temporal
+        );
+
+        importance += 0.15f * edgeBoost;
+        importance = std::clamp(importance, 0.0f, 1.0f);
+
+        // -------- SMOOTHING --------
+        lastImportance = 0.92f * lastImportance + 0.08f * importance;
+
+        int crf = policy->computeCRF(lastImportance);
+
+        // -------- ENCODER --------
+>>>>>>> Stashed changes
         if (!opened)
         {
             if (!encoder->open(path, crf))
@@ -174,12 +262,23 @@ void CompressionEngine::processEvent(const EventWindow& event)
         }
 
         encoder->writeFrame(frame);
+<<<<<<< Updated upstream
         prevFrame = frame;
 
+=======
+
+        prevFrame = frame;
+
+        // prevent ffmpeg choking
+>>>>>>> Stashed changes
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
     encoder->close();
 
+<<<<<<< Updated upstream
     logInfo("Event encoded: " + event.trigger);
+=======
+    logInfo("Clip saved: " + path);
+>>>>>>> Stashed changes
 }
