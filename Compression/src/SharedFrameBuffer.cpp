@@ -8,7 +8,6 @@
 #include <thread>
 #include <chrono>
 #include <cstring>
-#include <vector>
 
 static constexpr const char* SHM_DATA = "iris_frame_buffer_data";
 static constexpr const char* SHM_SIZES = "iris_frame_sizes";
@@ -75,10 +74,7 @@ bool SharedFrameBuffer::mapMemory()
     if (frame_buffer == MAP_FAILED ||
         frame_sizes == MAP_FAILED ||
         head_tail == MAP_FAILED)
-    {
-        logError("SharedFrameBuffer mmap failed");
         return false;
-    }
 
     logInfo("SharedFrameBuffer ready");
     return true;
@@ -91,7 +87,8 @@ bool SharedFrameBuffer::getFrame(uint64_t index, std::vector<uint8_t>& out)
 
     uint64_t head = getHead();
 
-    // reject frames too far behind head (prevents stale wrap corruption)
+    // IMPORTANT:
+    // prevent reading frames that are already overwritten in rolling buffer
     if (head > FRAME_BUFFER_SIZE && index + FRAME_BUFFER_SIZE < head)
         return false;
 
