@@ -3,6 +3,7 @@
 
 #include <opencv2/imgproc.hpp>
 #include <cmath>
+#include <algorithm>
 
 ImportanceEngine::ImportanceEngine(int w_, int h_, const Config& cfg_)
     : w(w_), h(h_), cfg(cfg_)
@@ -13,7 +14,7 @@ float ImportanceEngine::computeTemporal(uint64_t frame, uint64_t peak)
 {
     float dist = std::abs((int64_t)frame - (int64_t)peak);
 
-    // sharper center emphasis
+    // sharper center emphasis (keeps event locality strong)
     return std::exp(-(dist * dist) / 120.0f);
 }
 
@@ -28,12 +29,12 @@ ImportanceSignal ImportanceEngine::analyze(
     if (frame.empty())
         return s;
 
-    // -------- PREP --------
+    // ---------------- PREPROCESS ----------------
     cv::Mat resized, gray;
     cv::resize(frame, resized, cv::Size(w, h));
     cv::cvtColor(resized, gray, cv::COLOR_BGR2GRAY);
 
-    // -------- MOTION --------
+    // ---------------- MOTION ----------------
     float motionVal = 0.0f;
 
     if (!prev.empty())
@@ -51,48 +52,54 @@ ImportanceSignal ImportanceEngine::analyze(
     s.motion = 0.80f * prevMotion + 0.20f * motionVal;
     prevMotion = s.motion;
 
-    // -------- SPATIAL --------
+    // ---------------- SPATIAL DETAIL ----------------
     cv::Mat edges;
     cv::Canny(gray, edges, 50, 150);
 
     s.spatial =
-        (float)cv::countNonZero(edges) /
+        static_cast<float>(cv::countNonZero(edges)) /
         (w * h + 1e-6f);
 
-    // -------- REGION --------
-    int cx = w / 4;
-    int cy = h / 4;
-    int cw = w / 2;
-    int ch = h / 2;
+    // ---------------- REGION (SAFE ROI) ----------------
+    int cx = std::max(0, w / 4);
+    int cy = std::max(0, h / 4);
+    int cw = std::min(w / 2, w - cx);
+    int ch = std::min(h / 2, h - cy);
 
     cv::Rect center(cx, cy, cw, ch);
-    cv::Mat roiEdges = edges(center);
 
-    s.region =
-        (float)cv::countNonZero(roiEdges) /
-        (cw * ch + 1e-6f);
+    float regionVal = 0.0f;
+    if (center.width > 0 && center.height > 0)
+    {
+        cv::Mat roiEdges = edges(center);
+        regionVal =
+            static_cast<float>(cv::countNonZero(roiEdges)) /
+            (cw * ch + 1e-6f);
+    }
 
-    // -------- TEMPORAL --------
+    s.region = regionVal;
+
+    // ---------------- TEMPORAL ----------------
     float dist = std::abs((int64_t)frameIndex - (int64_t)peakFrame);
     s.temporal = std::exp(-(dist * dist) / 140.0f);
 
-    // -------- FACE (stub-safe, no overhead) --------
-    s.face = 0.0f; // reserved for Haar later if enabled
+    // ---------------- FACE (DISABLED BUT STABLE) ----------------
+    // Keep field alive for future Haar integration, but never assume runtime usage
+    s.face = 0.0f;
 
-    // -------- FUSED SCORE (IMPORTANT FIX) --------
+    // ---------------- PERCEPTUAL FUSION ----------------
     float raw =
         0.60f * s.motion +
         0.25f * s.spatial +
         0.10f * s.region +
         0.05f * s.temporal;
 
-    // perceptual compression curve (stable, no spikes)
     float normalized =
         std::log1p(raw * 6.5f) / std::log1p(6.5f);
 
     s.score = std::clamp(normalized, 0.0f, 1.0f);
 
-    // -------- LIGHT LOGGING (SAMPLED ONLY) --------
+    // ---------------- CONTROLLED LOGGING ----------------
     if (frameIndex % 40 == 0)
     {
         logInfo(
