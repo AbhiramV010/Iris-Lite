@@ -7,7 +7,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
-
+#include "EventTypes.hpp"
 #include "Config.hpp"
 #include "CompressionPolicy.hpp"
 #include "H264Encoder.hpp"

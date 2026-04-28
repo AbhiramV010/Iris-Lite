@@ -1,7 +1,7 @@
 #include "EventCluster.hpp"
 #include "logging.hpp"
 #include <algorithm>
-
+#include "EventTypes.hpp"
 static constexpr uint64_t BASE_GAP = 120;
 
 void EventCluster::add(const EventWindow& e)
