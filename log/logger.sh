@@ -1,36 +1,26 @@
 #!/bin/bash
 
-# Process identifiers based on your IRIS-Lite startup script
 processes=("zone_monitor.py" "main.py" "PerceptualCompressor" "detector_pipeline.py" "startCamera.py")
 
-cpu_log="/mnt/clipDrive/cpu_usage.csv"
-ram_log="/mnt/clipDrive/ram_usage.csv"
-
-# Initialize files with headers
-echo "Timestamp,Process,CPU_Usage" > "$cpu_log"
-echo "Timestamp,Process,RAM_Usage" > "$ram_log"
-
-interval=40
-total_duration=600 # 10 minutes
+interval=30
+total_duration=600
 start_time=$(date +%s)
 end_time=$((start_time + total_duration))
-
-echo "Monitoring IRIS-Lite: 5 processes for 10 minutes..."
+counter=1
 
 while [ $(date +%s) -lt $end_time ]; do
-    ts=$(date -u +"%Y-%m-%d %H:%M:%S")
+    echo "$counter"
+    ts=$(date +"%H:%M:%S")
     
     for proc in "${processes[@]}"; do
-        # Use pgrep -f to find the script in the full command line
-        # Use awk to sum values for multi-threaded processes like the Compressor
-        stats=$(pgrep -f "$proc" | xargs -r ps -o %cpu=,%mem= | awk '{cpu+=$1; mem+=$2} END {if(NR>0) print cpu, mem}')
+        cpu_val=$(pgrep -f "$proc" | xargs -r ps -o %cpu= | awk '{sum+=$1} END {if(NR>0) print sum}')
         
-        if [ -n "$stats" ]; then
-            read -r cpu_val ram_val <<< "$stats"
-            echo "$ts,$proc,$cpu_val" >> "$cpu_log"
-            echo "$ts,$proc,$ram_val" >> "$ram_log"
+        if [ -n "$cpu_val" ]; then
+            printf "[%s] %-20s CPU: %s%%\n" "$ts" "$proc" "$cpu_val"
         fi
     done
     
+    echo "------------------------------------------"
+    ((counter++))
     sleep $interval
 done
