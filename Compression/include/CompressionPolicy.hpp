@@ -15,4 +15,4 @@ public:
 
 private:
     float clamp01(float v) const;
-};
+};  

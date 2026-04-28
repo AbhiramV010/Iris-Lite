@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <algorithm>
+#include "SharedMemoryConfig.hpp"
 
 bool CompressionEngine::initialize(const Config& cfg)
 {

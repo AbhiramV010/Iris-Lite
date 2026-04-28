@@ -15,13 +15,6 @@
 #include "SystemGovernor.hpp"
 #include "EventCluster.hpp"
 
-struct EventWindow
-{
-    uint64_t startFrame;
-    uint64_t endFrame;
-    std::string trigger;
-};
-
 struct FrameImportance
 {
     float score;

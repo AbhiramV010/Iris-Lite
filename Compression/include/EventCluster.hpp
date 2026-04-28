@@ -7,8 +7,9 @@ class EventCluster
 {
 public:
     void add(const EventWindow& e);
-
     std::vector<EventWindow> flush();
+
+    bool shouldFlush() const;
 
 private:
     bool canMerge(const EventWindow& a, const EventWindow& b) const;
