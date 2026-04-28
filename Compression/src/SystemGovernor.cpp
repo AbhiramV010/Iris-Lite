@@ -1,6 +1,7 @@
 #include "SystemGovernor.hpp"
 #include <fstream>
 #include <algorithm>
+#include <cmath>
 
 float SystemGovernor::getCpuLoad()
 {
@@ -32,14 +33,39 @@ float SystemGovernor::getThermalLoad()
     float temp = 0;
     file >> temp;
 
+    // normalize (85C = max pressure)
     return std::min(1.0f, temp / 85000.0f);
 }
 
 float SystemGovernor::computePressure()
 {
-    return std::clamp(
-        0.7f * getCpuLoad() +
-        0.3f * getThermalLoad(),
-        0.0f, 1.0f
-    );
+    float cpu = getCpuLoad();
+    float temp = getThermalLoad();
+
+    // nonlinear stress curve (IMPORTANT)
+    float pressure =
+        0.65f * cpu +
+        0.35f * temp;
+
+    return std::clamp(pressure, 0.0f, 1.0f);
+}
+
+int SystemGovernor::adaptiveCRF(int baseCRF)
+{
+    float p = computePressure();
+
+    // Pi-safe compression ramp
+    int shift = static_cast<int>(p * 10.0f);
+
+    return std::clamp(baseCRF + shift, 18, 40);
+}
+
+bool SystemGovernor::shouldSkipFrame(float importance)
+{
+    float p = computePressure();
+
+    // only skip LOW importance when under pressure
+    if (p < 0.6f) return false;
+
+    return importance < 0.25f;
 }

@@ -8,8 +8,14 @@ class ImportanceEngine
 {
 public:
     ImportanceEngine(int w, int h, const Config& cfg);
+
     ImportanceSignal analyze(const cv::Mat& frame,
-        const cv::Mat& prev);
+        const cv::Mat& prev,
+        uint64_t frameIndex,
+        uint64_t peakFrame);
+
+private:
+    float computeTemporal(uint64_t frame, uint64_t peak);
 
 private:
     int w, h;

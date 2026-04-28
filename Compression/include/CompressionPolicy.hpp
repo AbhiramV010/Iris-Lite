@@ -5,13 +5,12 @@ class CompressionPolicy
 public:
     float motion(float v) const;
     float spatial(float v) const;
-    float face(bool detected) const;
     float region(float v) const;
 
-    // unified perceptual model
     float importanceScore(float motion,
-                          float spatial,
-                          float sensorBoost) const;
+        float spatial,
+        float region,
+        float temporal) const;
 
     int computeCRF(float importance) const;
 
