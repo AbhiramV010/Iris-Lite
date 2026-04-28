@@ -1,7 +1,8 @@
 #include "StorageManager.hpp"
+
 #include <sys/stat.h>
 #include <sstream>
-#include <ctime>
+#include <cstdint>
 
 static const std::string BASE = "/mnt/clipDrive/clips/";
 
@@ -17,13 +18,15 @@ std::string StorageManager::buildPath(uint64_t start,
 {
     std::ostringstream ss;
 
-    std::time_t t = std::time(nullptr);
-
-    ss << BASE << "iris_"
-       << t << "_"
+    ss << BASE
+       << "iris_"
        << start << "_"
-       << end << "_"
-       << tag << ".mp4";
+       << end;
+
+    if (!tag.empty())
+        ss << "_" << tag;
+
+    ss << ".mp4";
 
     return ss.str();
 }
