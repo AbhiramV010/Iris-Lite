@@ -29,5 +29,5 @@ while true; do
             echo "$current_time,$process,$ram_usage" >> $ram_log_file
         fi
     done
-    sleep 60  # Adjust monitoring interval as needed
+    sleep 40  # Adjust monitoring interval as needed
 done
