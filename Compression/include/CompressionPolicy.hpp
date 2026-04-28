@@ -8,10 +8,12 @@ public:
     float face(bool detected) const;
     float region(float v) const;
 
-    float importanceScore(float m, float s, float sensorBoost) const;
+    // unified perceptual model
+    float importanceScore(float motion,
+                          float spatial,
+                          float sensorBoost) const;
 
     int computeCRF(float importance) const;
-    int computeFPS(float importance) const;
 
 private:
     float clamp01(float v) const;
