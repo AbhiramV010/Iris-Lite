@@ -1,10 +1,12 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
 #include "EventTypes.hpp"
+
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
 #include <algorithm>
+
 #include "SharedMemoryConfig.hpp"
 
 bool CompressionEngine::initialize(const Config& cfg)
@@ -15,9 +17,17 @@ bool CompressionEngine::initialize(const Config& cfg)
     buffer = std::make_unique<SharedFrameBuffer>();
     governor = std::make_unique<SystemGovernor>();
 
+    logInfo("Initializing SharedFrameBuffer (waiting up to 20s)...");
+
     if (!buffer->initialize())
     {
-        logError("SharedFrameBuffer init failed");
+        logError("SharedFrameBuffer init failed — producer not running?");
+        return false;
+    }
+
+    if (!buffer->isValid())
+    {
+        logError("SharedFrameBuffer mapped but invalid");
         return false;
     }
 
@@ -31,13 +41,12 @@ bool CompressionEngine::initialize(const Config& cfg)
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine initialized");
+    logInfo("CompressionEngine initialized successfully");
     return true;
 }
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
-    // ---------- EVENT CLUSTERING ----------
     cluster.add(event);
 
     if (cluster.shouldFlush())
@@ -85,7 +94,7 @@ void CompressionEngine::workerLoop()
             cv.wait(lock, [&] { return stop || !queue.empty(); });
 
             if (stop && queue.empty())
-                return;
+                break;
 
             event = queue.front();
             queue.pop();
@@ -98,9 +107,16 @@ void CompressionEngine::workerLoop()
 void CompressionEngine::processEvent(const EventWindow& event)
 {
     if (!buffer || !encoder || !governor)
+    {
+        logError("Engine not properly initialized");
         return;
+    }
 
-    float pressure = governor->computePressure();
+    if (!buffer->isValid())
+    {
+        logError("Shared buffer invalid during processing");
+        return;
+    }
 
     std::string path =
         "/mnt/clipDrive/clips/iris_" +
@@ -111,7 +127,6 @@ void CompressionEngine::processEvent(const EventWindow& event)
     bool opened = false;
 
     float lastImportance = 0.5f;
-
     uint64_t peakFrame =
         (event.startFrame + event.endFrame) / 2;
 
@@ -119,10 +134,8 @@ void CompressionEngine::processEvent(const EventWindow& event)
         i < event.endFrame && !stop;
         i++)
     {
-        // ---------- FRAME SKIP (GOVERNOR) ----------
-        float importanceEstimate = lastImportance;
-
-        if (governor->shouldSkipFrame(importanceEstimate))
+        // ---------- GOVERNOR SKIP ----------
+        if (governor->shouldSkipFrame(lastImportance))
             continue;
 
         uint64_t slot = i % FRAME_BUFFER_SIZE;
@@ -135,10 +148,10 @@ void CompressionEngine::processEvent(const EventWindow& event)
         // ---------- SAFE FRAME RECOVERY ----------
         if (!ok || jpeg.empty())
         {
-            if (!prevFrame.empty())
-                frame = prevFrame.clone();
-            else
+            if (prevFrame.empty())
                 continue;
+
+            frame = prevFrame.clone();
         }
         else
         {
@@ -146,10 +159,10 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
             if (frame.empty())
             {
-                if (!prevFrame.empty())
-                    frame = prevFrame.clone();
-                else
+                if (prevFrame.empty())
                     continue;
+
+                frame = prevFrame.clone();
             }
         }
 
@@ -163,13 +176,13 @@ void CompressionEngine::processEvent(const EventWindow& event)
             motion = cv::mean(diff)[0] / 255.0f;
         }
 
-        // ---------- SALIENCY ----------
+        // ---------- GRAYSCALE ----------
         cv::Mat gray;
         cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
 
+        // ---------- SALIENCY ----------
         cv::Mat small;
         cv::resize(gray, small, cv::Size(64, 36));
-
         float saliency = cv::mean(small)[0] / 255.0f;
 
         // ---------- SPATIAL ----------
@@ -177,9 +190,10 @@ void CompressionEngine::processEvent(const EventWindow& event)
         cv::Canny(gray, edges, 50, 150);
 
         float spatial =
-            (float)cv::countNonZero(edges) /
+            static_cast<float>(cv::countNonZero(edges)) /
             (frame.rows * frame.cols + 1e-6f);
 
+        // ---------- TEMPORAL ----------
         float temporal = computeTemporalWeight(i, peakFrame);
 
         // ---------- IMPORTANCE ----------
@@ -195,11 +209,11 @@ void CompressionEngine::processEvent(const EventWindow& event)
             0.92f * lastImportance +
             0.08f * importance;
 
-        // ---------- ADAPTIVE CRF (GOVERNOR CONTROLLED) ----------
+        // ---------- ADAPTIVE CRF ----------
         int baseCRF = policy->computeCRF(lastImportance);
         int crf = governor->adaptiveCRF(baseCRF);
 
-        // ---------- ENCODER ----------
+        // ---------- ENCODER INIT ----------
         if (!opened)
         {
             if (!encoder->open(path, crf))
@@ -211,14 +225,14 @@ void CompressionEngine::processEvent(const EventWindow& event)
         }
 
         encoder->writeFrame(frame);
-
         prevFrame = frame;
 
-        // ---------- PI STABILITY THROTTLE ----------
+        // ---------- THROTTLE ----------
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
-    encoder->close();
+    if (opened)
+        encoder->close();
 
     logInfo("Clip saved: " + path);
 }
