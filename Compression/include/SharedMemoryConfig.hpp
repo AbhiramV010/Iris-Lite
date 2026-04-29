@@ -1,11 +1,9 @@
 #pragma once
-
 #include <cstdint>
 
-#ifndef FRAME_BUFFER_SIZE
-static constexpr std::uint64_t FRAME_BUFFER_SIZE = 24ULL * 60ULL * 5ULL;
-#endif
+static constexpr std::uint64_t FRAME_WIDTH = 1920;
+static constexpr std::uint64_t FRAME_HEIGHT = 1080;
+static constexpr std::uint64_t FRAME_CHANNELS = 3;
 
-#ifndef SLOT_SIZE
-static constexpr std::uint64_t SLOT_SIZE = 1ULL << 20;
-#endif
+static constexpr std::uint64_t FRAME_SIZE =
+FRAME_WIDTH * FRAME_HEIGHT * FRAME_CHANNELS;

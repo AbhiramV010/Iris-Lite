@@ -1,13 +1,12 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
 #include "EventTypes.hpp"
+#include "SharedMemoryConfig.hpp"
 
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
 #include <algorithm>
-
-#include "SharedMemoryConfig.hpp"
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -17,7 +16,7 @@ bool CompressionEngine::initialize(const Config& cfg)
     buffer = std::make_unique<SharedFrameBuffer>();
     governor = std::make_unique<SystemGovernor>();
 
-    logInfo("Initializing SharedFrameBuffer (waiting up to 20s)...");
+    logInfo("Initializing SharedFrameBuffer (RAW mode, waiting up to 20s)...");
 
     if (!buffer->initialize())
     {
@@ -32,16 +31,16 @@ bool CompressionEngine::initialize(const Config& cfg)
     }
 
     encoder = std::make_unique<H264Encoder>(
-        cfg.encodeWidth,
-        cfg.encodeHeight,
-        cfg.fps,
+        config.encodeWidth,
+        config.encodeHeight,
+        config.fps,
         true
     );
 
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine initialized successfully");
+    logInfo("CompressionEngine initialized successfully (RAW framebuffer mode)");
     return true;
 }
 
@@ -53,11 +52,9 @@ void CompressionEngine::enqueueEvent(const EventWindow& event)
     {
         auto events = cluster.flush();
 
-        {
-            std::lock_guard<std::mutex> lock(mtx);
-            for (const auto& e : events)
-                queue.push(e);
-        }
+        std::lock_guard<std::mutex> lock(mtx);
+        for (const auto& e : events)
+            queue.push(e);
 
         cv.notify_one();
     }
@@ -118,6 +115,14 @@ void CompressionEngine::processEvent(const EventWindow& event)
         return;
     }
 
+    uint8_t* raw = buffer->getFramePtr();
+
+    if (!raw)
+    {
+        logError("Null shared memory frame pointer");
+        return;
+    }
+
     std::string path =
         "/mnt/clipDrive/clips/iris_" +
         std::to_string(event.startFrame) + "_" +
@@ -127,44 +132,29 @@ void CompressionEngine::processEvent(const EventWindow& event)
     bool opened = false;
 
     float lastImportance = 0.5f;
-    uint64_t peakFrame =
-        (event.startFrame + event.endFrame) / 2;
+    uint64_t peakFrame = (event.startFrame + event.endFrame) / 2;
 
     for (uint64_t i = event.startFrame;
         i < event.endFrame && !stop;
         i++)
     {
+        // ---------- FRAME WRAP SAFETY ----------
+        cv::Mat frame(
+            FRAME_HEIGHT,
+            FRAME_WIDTH,
+            CV_8UC3,
+            raw
+        );
+
+        if (frame.empty() || frame.data == nullptr)
+        {
+            logError("Invalid frame from shared memory");
+            continue;
+        }
+
         // ---------- GOVERNOR SKIP ----------
         if (governor->shouldSkipFrame(lastImportance))
             continue;
-
-        uint64_t slot = i % FRAME_BUFFER_SIZE;
-
-        std::vector<uint8_t> jpeg;
-        bool ok = buffer->getFrame(slot, jpeg);
-
-        cv::Mat frame;
-
-        // ---------- SAFE FRAME RECOVERY ----------
-        if (!ok || jpeg.empty())
-        {
-            if (prevFrame.empty())
-                continue;
-
-            frame = prevFrame.clone();
-        }
-        else
-        {
-            frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
-
-            if (frame.empty())
-            {
-                if (prevFrame.empty())
-                    continue;
-
-                frame = prevFrame.clone();
-            }
-        }
 
         // ---------- MOTION ----------
         float motion = 0.0f;
@@ -209,11 +199,11 @@ void CompressionEngine::processEvent(const EventWindow& event)
             0.92f * lastImportance +
             0.08f * importance;
 
-        // ---------- ADAPTIVE CRF ----------
+        // ---------- CRF ----------
         int baseCRF = policy->computeCRF(lastImportance);
         int crf = governor->adaptiveCRF(baseCRF);
 
-        // ---------- ENCODER INIT ----------
+        // ---------- ENCODER ----------
         if (!opened)
         {
             if (!encoder->open(path, crf))
@@ -227,7 +217,6 @@ void CompressionEngine::processEvent(const EventWindow& event)
         encoder->writeFrame(frame);
         prevFrame = frame;
 
-        // ---------- THROTTLE ----------
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
