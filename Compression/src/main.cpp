@@ -7,13 +7,13 @@
 
 #include "Config.hpp"
 #include "CompressionEngine.hpp"
-#include "SharedMemoryConfig.hpp"
 #include "logging.hpp"
 
 struct SharedEventBuffer
 {
     uint64_t startFrame;
     uint64_t endFrame;
+    char trigger[64];
 };
 
 static bool waitForSHM(const char* name, int& fd)
@@ -55,15 +55,15 @@ int main()
 
     if (ptr == MAP_FAILED)
     {
-        logError("Failed SHM mapping");
+        logError("SHM mapping failed");
         return -1;
     }
 
-    auto* shared = (SharedEventBuffer*)ptr;
+    auto* shared = reinterpret_cast<SharedEventBuffer*>(ptr);
 
     uint64_t lastStart = 0, lastEnd = 0;
 
-    logInfo("System fully online");
+    logInfo("System online");
 
     while (true)
     {
@@ -85,10 +85,13 @@ int main()
         lastStart = start;
         lastEnd = end;
 
-        engine.enqueueEvent({ start, end, "external" });
+        std::string trigger = "unknown";
+
+        if (shared->trigger[0] != '\0')
+            trigger = std::string(shared->trigger);
+
+        engine.enqueueEvent({ start, end, trigger });
 
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
-
-    return 0;
 }

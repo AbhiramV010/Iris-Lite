@@ -1,6 +1,8 @@
 #pragma once
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/objdetect.hpp>
+
 #include "ImportanceSignal.hpp"
 #include "Config.hpp"
 
@@ -22,4 +24,11 @@ private:
     Config cfg;
 
     float prevMotion = 0.0f;
+
+    // ---- FACE DETECTION ----
+    cv::CascadeClassifier faceCascade;
+    bool faceReady = false;
+
+    int frameCounter = 0;
+    float lastFaceScore = 0.0f;
 };

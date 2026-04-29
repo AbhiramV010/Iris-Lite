@@ -5,18 +5,37 @@
 #include <cmath>
 #include <algorithm>
 
+// --------------------------------------------------
+// INIT
+// --------------------------------------------------
+
 ImportanceEngine::ImportanceEngine(int w_, int h_, const Config& cfg_)
     : w(w_), h(h_), cfg(cfg_)
 {
+    if (cfg.enableFace)
+    {
+        faceReady = faceCascade.load(cfg.faceModelPath);
+
+        if (faceReady)
+            logInfo("Face detection ENABLED");
+        else
+            logWarn("Face detection FAILED to load model");
+    }
 }
+
+// --------------------------------------------------
+// TEMPORAL
+// --------------------------------------------------
 
 float ImportanceEngine::computeTemporal(uint64_t frame, uint64_t peak)
 {
     float dist = std::abs((int64_t)frame - (int64_t)peak);
-
-    // sharper center emphasis (keeps event locality strong)
     return std::exp(-(dist * dist) / 120.0f);
 }
+
+// --------------------------------------------------
+// ANALYZE
+// --------------------------------------------------
 
 ImportanceSignal ImportanceEngine::analyze(
     const cv::Mat& frame,
@@ -28,6 +47,8 @@ ImportanceSignal ImportanceEngine::analyze(
 
     if (frame.empty())
         return s;
+
+    frameCounter++;
 
     // ---------------- PREPROCESS ----------------
     cv::Mat resized, gray;
@@ -52,7 +73,7 @@ ImportanceSignal ImportanceEngine::analyze(
     s.motion = 0.80f * prevMotion + 0.20f * motionVal;
     prevMotion = s.motion;
 
-    // ---------------- SPATIAL DETAIL ----------------
+    // ---------------- SPATIAL ----------------
     cv::Mat edges;
     cv::Canny(gray, edges, 50, 150);
 
@@ -60,53 +81,84 @@ ImportanceSignal ImportanceEngine::analyze(
         static_cast<float>(cv::countNonZero(edges)) /
         (w * h + 1e-6f);
 
-    // ---------------- REGION (SAFE ROI) ----------------
-    int cx = std::max(0, w / 4);
-    int cy = std::max(0, h / 4);
-    int cw = std::min(w / 2, w - cx);
-    int ch = std::min(h / 2, h - cy);
+    // ---------------- REGION ----------------
+    int cx = w / 4;
+    int cy = h / 4;
+    int cw = w / 2;
+    int ch = h / 2;
 
     cv::Rect center(cx, cy, cw, ch);
 
     float regionVal = 0.0f;
     if (center.width > 0 && center.height > 0)
     {
-        cv::Mat roiEdges = edges(center);
+        cv::Mat roi = edges(center);
         regionVal =
-            static_cast<float>(cv::countNonZero(roiEdges)) /
+            static_cast<float>(cv::countNonZero(roi)) /
             (cw * ch + 1e-6f);
     }
 
     s.region = regionVal;
 
     // ---------------- TEMPORAL ----------------
-    float dist = std::abs((int64_t)frameIndex - (int64_t)peakFrame);
-    s.temporal = std::exp(-(dist * dist) / 140.0f);
+    s.temporal = computeTemporal(frameIndex, peakFrame);
 
-    // ---------------- FACE (DISABLED BUT STABLE) ----------------
-    // Keep field alive for future Haar integration, but never assume runtime usage
-    s.face = 0.0f;
+    // ---------------- FACE DETECTION (THROTTLED) ----------------
+    float faceScore = lastFaceScore;
 
-    // ---------------- PERCEPTUAL FUSION ----------------
+    if (cfg.enableFace && faceReady &&
+        (frameCounter % cfg.faceDetectInterval == 0))
+    {
+        std::vector<cv::Rect> faces;
+
+        faceCascade.detectMultiScale(
+            gray,
+            faces,
+            1.1,
+            3,
+            0,
+            cv::Size(20, 20)
+        );
+
+        if (!faces.empty())
+        {
+            // normalize by area
+            float maxArea = 0.0f;
+            for (const auto& f : faces)
+                maxArea = std::max(maxArea, (float)(f.area()));
+
+            faceScore = std::min(1.0f, maxArea / (w * h * 0.25f));
+        }
+        else
+        {
+            faceScore *= 0.9f; // decay instead of hard drop
+        }
+
+        lastFaceScore = faceScore;
+    }
+
+    s.face = faceScore;
+
+    // ---------------- FUSION ----------------
     float raw =
-        0.60f * s.motion +
-        0.25f * s.spatial +
+        0.50f * s.motion +
+        0.20f * s.spatial +
         0.10f * s.region +
-        0.05f * s.temporal;
+        0.10f * s.temporal +
+        0.10f * s.face;
 
     float normalized =
         std::log1p(raw * 6.5f) / std::log1p(6.5f);
 
     s.score = std::clamp(normalized, 0.0f, 1.0f);
 
-    // ---------------- CONTROLLED LOGGING ----------------
+    // ---------------- LOG ----------------
     if (frameIndex % 40 == 0)
     {
         logInfo(
             "IMP | m=" + std::to_string(s.motion) +
             " s=" + std::to_string(s.spatial) +
-            " r=" + std::to_string(s.region) +
-            " t=" + std::to_string(s.temporal) +
+            " f=" + std::to_string(s.face) +
             " score=" + std::to_string(s.score)
         );
     }

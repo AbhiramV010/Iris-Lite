@@ -6,7 +6,9 @@
 #include <thread>
 #include <atomic>
 #include <memory>
-#include <string>
+
+#include <opencv2/objdetect.hpp>
+
 #include "EventTypes.hpp"
 #include "Config.hpp"
 #include "CompressionPolicy.hpp"
@@ -14,12 +16,8 @@
 #include "SharedFrameBuffer.hpp"
 #include "SystemGovernor.hpp"
 #include "EventCluster.hpp"
-
-struct FrameImportance
-{
-    float score;
-    bool isPeak;
-};
+#include "ImportanceEngine.hpp"
+#include "StorageManager.hpp"
 
 class CompressionEngine
 {
@@ -32,7 +30,7 @@ private:
     void workerLoop();
     void processEvent(const EventWindow& event);
 
-    float computeTemporalWeight(uint64_t frame, uint64_t peak);
+    float computeCompressionPressure(const EventWindow& event);
 
 private:
     Config config;
@@ -48,8 +46,12 @@ private:
     std::unique_ptr<H264Encoder> encoder;
     std::unique_ptr<SharedFrameBuffer> buffer;
     std::unique_ptr<SystemGovernor> governor;
+    std::unique_ptr<ImportanceEngine> importance;
+    std::unique_ptr<StorageManager> storage;
+
+    // -------- FACE DETECTION --------
+    cv::CascadeClassifier faceCascade;
+    bool faceEnabled = false;
 
     EventCluster cluster;
-
-    float lastImportance = 0.5f;
 };

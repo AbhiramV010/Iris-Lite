@@ -26,14 +26,16 @@ bool SharedFrameBuffer::mapMemory()
 
     while ((fd = shm_open(SHM_NAME, O_RDONLY, 0666)) < 0)
     {
-        if (++tries > 200) // 20 seconds
+        if (++tries > 200)
         {
-            logError("Failed to open shared memory (timeout)");
+            logError("SharedFrameBuffer: timeout waiting for producer");
             return false;
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+
+    logInfo("SharedFrameBuffer: shm_open success");
 
     frame_buffer = (uint8_t*)mmap(
         nullptr,
@@ -46,11 +48,12 @@ bool SharedFrameBuffer::mapMemory()
 
     if (frame_buffer == MAP_FAILED)
     {
-        logError("mmap failed for raw frame buffer");
+        logError("SharedFrameBuffer: mmap failed");
         return false;
     }
 
-    logInfo("SharedFrameBuffer mapped (RAW mode)");
+    logInfo("SharedFrameBuffer: mapped successfully (" + std::to_string(FRAME_SIZE) + " bytes)");
+
     return true;
 }
 

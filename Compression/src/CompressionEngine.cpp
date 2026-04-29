@@ -1,12 +1,17 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
-#include "EventTypes.hpp"
-#include "SharedMemoryConfig.hpp"
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/objdetect.hpp>
+
 #include <chrono>
 #include <thread>
 #include <algorithm>
+#include <cmath>
+
+// --------------------------------------------------
+// INITIALIZATION
+// --------------------------------------------------
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -15,18 +20,19 @@ bool CompressionEngine::initialize(const Config& cfg)
     policy = std::make_unique<CompressionPolicy>();
     buffer = std::make_unique<SharedFrameBuffer>();
     governor = std::make_unique<SystemGovernor>();
+    storage = std::make_unique<StorageManager>();
 
-    logInfo("Initializing SharedFrameBuffer (RAW mode, waiting up to 20s)...");
+    importance = std::make_unique<ImportanceEngine>(
+        config.perceptualWidth,
+        config.perceptualHeight,
+        config
+    );
 
-    if (!buffer->initialize())
+    logInfo("Initializing SharedFrameBuffer");
+
+    if (!buffer->initialize() || !buffer->isValid())
     {
-        logError("SharedFrameBuffer init failed — producer not running?");
-        return false;
-    }
-
-    if (!buffer->isValid())
-    {
-        logError("SharedFrameBuffer mapped but invalid");
+        logError("SharedFrameBuffer failed");
         return false;
     }
 
@@ -37,28 +43,52 @@ bool CompressionEngine::initialize(const Config& cfg)
         true
     );
 
+    storage->ensureReady();
+
+    // -------- FACE DETECTOR (LOAD ONCE) --------
+    if (config.enableFace)
+    {
+        if (!faceCascade.load("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"))
+        {
+            logWarn("Face cascade not found → disabling face detection");
+            faceEnabled = false;
+        }
+        else
+        {
+            faceEnabled = true;
+        }
+    }
+
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine initialized successfully (RAW framebuffer mode)");
+    logInfo("CompressionEngine READY (Phase 2 stable)");
     return true;
 }
+
+// --------------------------------------------------
+// EVENT QUEUE
+// --------------------------------------------------
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
     cluster.add(event);
 
-    if (cluster.shouldFlush())
-    {
-        auto events = cluster.flush();
+    if (!cluster.shouldFlush())
+        return;
 
-        std::lock_guard<std::mutex> lock(mtx);
-        for (const auto& e : events)
-            queue.push(e);
+    auto events = cluster.flush();
 
-        cv.notify_one();
-    }
+    std::lock_guard<std::mutex> lock(mtx);
+    for (const auto& e : events)
+        queue.push(e);
+
+    cv.notify_one();
 }
+
+// --------------------------------------------------
+// SHUTDOWN
+// --------------------------------------------------
 
 void CompressionEngine::shutdown()
 {
@@ -74,11 +104,29 @@ void CompressionEngine::shutdown()
     logInfo("CompressionEngine shutdown complete");
 }
 
-float CompressionEngine::computeTemporalWeight(uint64_t frame, uint64_t peak)
+// --------------------------------------------------
+// PRESSURE MODEL
+// --------------------------------------------------
+
+float CompressionEngine::computeCompressionPressure(const EventWindow& event)
 {
-    float dist = std::abs((int64_t)frame - (int64_t)peak);
-    return std::exp(-(dist * dist) / 80.0f);
+    float sys = governor->computePressure();
+
+    float duration =
+        static_cast<float>(event.endFrame - event.startFrame);
+
+    float durationFactor =
+        std::min(1.0f, duration / (config.fps * 10.0f));
+
+    return std::clamp(
+        0.7f * sys + 0.3f * durationFactor,
+        0.0f, 1.0f
+    );
 }
+
+// --------------------------------------------------
+// WORKER LOOP
+// --------------------------------------------------
 
 void CompressionEngine::workerLoop()
 {
@@ -88,7 +136,10 @@ void CompressionEngine::workerLoop()
 
         {
             std::unique_lock<std::mutex> lock(mtx);
-            cv.wait(lock, [&] { return stop || !queue.empty(); });
+
+            cv.wait(lock, [&] {
+                return stop || !queue.empty();
+                });
 
             if (stop && queue.empty())
                 break;
@@ -101,44 +152,47 @@ void CompressionEngine::workerLoop()
     }
 }
 
+// --------------------------------------------------
+// CORE PIPELINE
+// --------------------------------------------------
+
 void CompressionEngine::processEvent(const EventWindow& event)
 {
-    if (!buffer || !encoder || !governor)
+    if (!buffer || !encoder || !importance)
     {
-        logError("Engine not properly initialized");
-        return;
-    }
-
-    if (!buffer->isValid())
-    {
-        logError("Shared buffer invalid during processing");
+        logError("Engine not initialized");
         return;
     }
 
     uint8_t* raw = buffer->getFramePtr();
-
     if (!raw)
     {
-        logError("Null shared memory frame pointer");
+        logError("Null frame pointer");
         return;
     }
 
     std::string path =
-        "/mnt/clipDrive/clips/iris_" +
-        std::to_string(event.startFrame) + "_" +
-        std::to_string(event.endFrame) + ".mp4";
+        storage->buildPath(event.startFrame, event.endFrame, event.trigger);
+
+    float pressure = computeCompressionPressure(event);
+
+    logInfo("EVENT START | " + event.trigger);
 
     cv::Mat prevFrame;
     bool opened = false;
 
-    float lastImportance = 0.5f;
-    uint64_t peakFrame = (event.startFrame + event.endFrame) / 2;
+    float smoothedImportance = 0.5f;
+
+    uint64_t peak = (event.startFrame + event.endFrame) >> 1;
+
+    // -------- FACE STATE --------
+    int faceSkip = 0;
+    bool faceDetected = false;
 
     for (uint64_t i = event.startFrame;
         i < event.endFrame && !stop;
-        i++)
+        ++i)
     {
-        // ---------- FRAME WRAP SAFETY ----------
         cv::Mat frame(
             FRAME_HEIGHT,
             FRAME_WIDTH,
@@ -146,69 +200,63 @@ void CompressionEngine::processEvent(const EventWindow& event)
             raw
         );
 
-        if (frame.empty() || frame.data == nullptr)
-        {
-            logError("Invalid frame from shared memory");
-            continue;
-        }
-
-        // ---------- GOVERNOR SKIP ----------
-        if (governor->shouldSkipFrame(lastImportance))
+        if (!frame.data)
             continue;
 
-        // ---------- MOTION ----------
-        float motion = 0.0f;
-
-        if (!prevFrame.empty())
+        // -------- FACE DETECTION (THROTTLED) --------
+        if (faceEnabled && (faceSkip++ % 10 == 0))
         {
-            cv::Mat diff;
-            cv::absdiff(frame, prevFrame, diff);
-            motion = cv::mean(diff)[0] / 255.0f;
+            cv::Mat small, gray;
+            cv::resize(frame, small, cv::Size(320, 180));
+            cv::cvtColor(small, gray, cv::COLOR_BGR2GRAY);
+
+            std::vector<cv::Rect> faces;
+
+            faceCascade.detectMultiScale(
+                gray,
+                faces,
+                1.1,
+                3,
+                0,
+                cv::Size(30, 30)
+            );
+
+            faceDetected = !faces.empty();
         }
 
-        // ---------- GRAYSCALE ----------
-        cv::Mat gray;
-        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        // -------- IMPORTANCE --------
+        ImportanceSignal sig =
+            importance->analyze(frame, prevFrame, i, peak);
 
-        // ---------- SALIENCY ----------
-        cv::Mat small;
-        cv::resize(gray, small, cv::Size(64, 36));
-        float saliency = cv::mean(small)[0] / 255.0f;
+        float importanceScore = sig.score;
 
-        // ---------- SPATIAL ----------
-        cv::Mat edges;
-        cv::Canny(gray, edges, 50, 150);
+        if (faceDetected)
+            importanceScore = std::min(1.0f, importanceScore + 0.15f);
 
-        float spatial =
-            static_cast<float>(cv::countNonZero(edges)) /
-            (frame.rows * frame.cols + 1e-6f);
+        // -------- PRESSURE ADJUST --------
+        float adjusted =
+            importanceScore * (1.0f - 0.5f * pressure);
 
-        // ---------- TEMPORAL ----------
-        float temporal = computeTemporalWeight(i, peakFrame);
+        adjusted = std::clamp(adjusted, 0.0f, 1.0f);
 
-        // ---------- IMPORTANCE ----------
-        float importance = policy->importanceScore(
-            0.6f * motion + 0.4f * saliency,
-            spatial,
-            temporal
+        smoothedImportance =
+            0.88f * smoothedImportance +
+            0.12f * adjusted;
+
+        // -------- GOVERNOR --------
+        if (governor->shouldSkipFrame(smoothedImportance))
+            continue;
+
+        int crf = governor->adaptiveCRF(
+            policy->computeCRF(smoothedImportance)
         );
 
-        importance = std::clamp(importance, 0.0f, 1.0f);
-
-        lastImportance =
-            0.92f * lastImportance +
-            0.08f * importance;
-
-        // ---------- CRF ----------
-        int baseCRF = policy->computeCRF(lastImportance);
-        int crf = governor->adaptiveCRF(baseCRF);
-
-        // ---------- ENCODER ----------
+        // -------- ENCODER --------
         if (!opened)
         {
             if (!encoder->open(path, crf))
             {
-                logError("Encoder open failed");
+                logError("Encoder failed");
                 return;
             }
             opened = true;
@@ -217,11 +265,11 @@ void CompressionEngine::processEvent(const EventWindow& event)
         encoder->writeFrame(frame);
         prevFrame = frame;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     if (opened)
         encoder->close();
 
-    logInfo("Clip saved: " + path);
+    logInfo("EVENT END | saved=" + path);
 }

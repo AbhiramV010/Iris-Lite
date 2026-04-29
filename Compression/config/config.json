@@ -1,17 +1,45 @@
 {
-  "mode": "windows",
+  "system": {
+    "mode": "embedded",
+    "log_level": "info"
+  },
 
-  "encode_width": 640,
-  "encode_height": 360,
+  "encoding": {
+    "width": 640,
+    "height": 360,
+    "fps": 24,
+    "base_crf": 22,
+    "hardware_accel": true
+  },
 
-  "perceptual_width": 320,
-  "perceptual_height": 180,
+  "perception": {
+    "width": 320,
+    "height": 180,
 
-  "use_faces": true,
-  "use_motion": true,
-  "use_edges": true,
+    "use_motion": true,
+    "use_spatial": true,
+    "use_faces": false,
 
-  "crf": 22,
+    "face_model": "haar",
+    "face_scale_factor": 1.1,
+    "face_min_neighbors": 3
+  },
+
+  "governor": {
+    "enable": true,
+    "max_skip_pressure": 0.65,
+    "max_crf_shift": 12
+  },
+
+  "event": {
+    "max_event_duration_sec": 10,
+    "cluster_base_gap_frames": 120
+  },
+
+  "storage": {
+    "base_path": "/mnt/clipDrive/clips/",
+    "tag_with_trigger": true
+  },
 
   "privacy_zones": [
     {
