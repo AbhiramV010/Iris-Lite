@@ -54,6 +54,9 @@ set(SOURCES
     src/SystemGovernor.cpp
     src/StorageManager.cpp
     src/EventCluster.cpp
+    src/ImportanceMemory.cpp
+    src/StorageManager.cpp
+    src/Dashboard.cpp
 )
 
 # ---------------- EXECUTABLE ----------------
