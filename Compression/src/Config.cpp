@@ -25,7 +25,9 @@ bool loadConfig(Config& cfg, const std::string& path)
 
         cfg.perceptualWidth = j.value("perceptual_width", cfg.perceptualWidth);
         cfg.perceptualHeight = j.value("perceptual_height", cfg.perceptualHeight);
-
+        cfg.enableFace = j.value("use_faces", cfg.enableFace);
+        cfg.enableMotion = j.value("use_motion", cfg.enableMotion);
+        cfg.enableSpatial = j.value("use_edges", cfg.enableSpatial);
         cfg.fps = j.value("fps", cfg.fps);
         cfg.baseCRF = j.value("crf", cfg.baseCRF);
 
