@@ -1,45 +1,19 @@
 {
-  "system": {
-    "mode": "embedded",
-    "log_level": "info"
-  },
+  "encode_width": 640,
+  "encode_height": 360,
 
-  "encoding": {
-    "width": 640,
-    "height": 360,
-    "fps": 24,
-    "base_crf": 22,
-    "hardware_accel": true
-  },
+  "perceptual_width": 320,
+  "perceptual_height": 180,
 
-  "perception": {
-    "width": 320,
-    "height": 180,
+  "fps": 24,
+  "crf": 22,
 
-    "use_motion": true,
-    "use_spatial": true,
-    "use_faces": false,
+  "use_faces": true,
+  "use_motion": true,
+  "use_edges": true,
 
-    "face_model": "haar",
-    "face_scale_factor": 1.1,
-    "face_min_neighbors": 3
-  },
-
-  "governor": {
-    "enable": true,
-    "max_skip_pressure": 0.65,
-    "max_crf_shift": 12
-  },
-
-  "event": {
-    "max_event_duration_sec": 10,
-    "cluster_base_gap_frames": 120
-  },
-
-  "storage": {
-    "base_path": "/mnt/clipDrive/clips/",
-    "tag_with_trigger": true
-  },
+  "face_model_path": "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+  "face_detect_interval": 10,
 
   "privacy_zones": [
     {
