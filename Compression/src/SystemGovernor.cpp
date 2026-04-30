@@ -3,9 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-// ---------------------------
-// CPU LOAD
-// ---------------------------
+// ---------------- CPU LOAD ----------------
 
 float SystemGovernor::getCpuLoad()
 {
@@ -32,9 +30,7 @@ float SystemGovernor::getCpuLoad()
     return 1.0f - (float)idleDiff / totalDiff;
 }
 
-// ---------------------------
-// TEMPERATURE
-// ---------------------------
+// ---------------- THERMAL LOAD ----------------
 
 float SystemGovernor::getThermalLoad()
 {
@@ -43,59 +39,22 @@ float SystemGovernor::getThermalLoad()
     float temp = 0;
     file >> temp;
 
-    // normalize (85°C → 1.0)
+    // normalize (85°C -> 1.0)
     return std::min(1.0f, temp / 85000.0f);
 }
 
-// ---------------------------
-// PRESSURE (WITH SMOOTHING)
-// ---------------------------
+// ---------------- PRESSURE SIGNAL ----------------
+// PURE METRIC ONLY — NO CONTROL ROLE
 
 float SystemGovernor::computePressure()
 {
     float cpu = getCpuLoad();
     float temp = getThermalLoad();
 
-    float raw =
-        0.7f * cpu +
-        0.3f * temp;
+    float raw = 0.7f * cpu + 0.3f * temp;
 
-    static float smoothed = 0.0f;
+    static float ema = 0.0f;
+    ema = 0.85f * ema + 0.15f * raw;
 
-    // EMA smoothing → prevents oscillation
-    smoothed = 0.85f * smoothed + 0.15f * raw;
-
-    return std::clamp(smoothed, 0.0f, 1.0f);
-}
-
-// ---------------------------
-// ADAPTIVE CRF
-// ---------------------------
-
-int SystemGovernor::adaptiveCRF(int baseCRF)
-{
-    float p = computePressure();
-
-    int shift = static_cast<int>(p * 12.0f);
-
-    return std::clamp(baseCRF + shift, 18, 40);
-}
-
-// ---------------------------
-// FRAME SKIP LOGIC
-// ---------------------------
-
-bool SystemGovernor::shouldSkipFrame(float importance)
-{
-    float p = computePressure();
-
-    // only skip under real stress
-    if (p < 0.65f)
-        return false;
-
-    // progressive skip curve
-    float threshold =
-        0.25f + (p - 0.65f) * 0.5f;
-
-    return importance < threshold;
+    return std::clamp(ema, 0.0f, 1.0f);
 }

@@ -6,32 +6,15 @@
 #include <thread>
 #include <algorithm>
 
-// --------------------------------------------------
-// INITIALIZATION
-// --------------------------------------------------
+// ---------------- INIT ----------------
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
     config = cfg;
 
-    policy = std::make_unique<CompressionPolicy>();
     buffer = std::make_unique<SharedFrameBuffer>();
     governor = std::make_unique<SystemGovernor>();
     storage = std::make_unique<StorageManager>();
-
-    importance = std::make_unique<ImportanceEngine>(
-        config.perceptualWidth,
-        config.perceptualHeight,
-        config
-    );
-
-    logInfo("Initializing SharedFrameBuffer");
-
-    if (!buffer->initialize() || !buffer->isValid())
-    {
-        logError("SharedFrameBuffer failed");
-        return false;
-    }
 
     encoder = std::make_unique<H264Encoder>(
         config.encodeWidth,
@@ -40,18 +23,30 @@ bool CompressionEngine::initialize(const Config& cfg)
         true
     );
 
+    orchestrator = std::make_unique<CompressionOrchestrator>(
+        config,
+        nullptr,   // wire externally if needed
+        governor.get(),
+        nullptr,
+        nullptr
+    );
+
+    if (!buffer->initialize() || !buffer->isValid())
+    {
+        logError("SharedFrameBuffer failed");
+        return false;
+    }
+
     storage->ensureReady();
 
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine READY (Phase 4 stable core)");
+    logInfo("CompressionEngine READY (Fidelity Mode)");
     return true;
 }
 
-// --------------------------------------------------
-// EVENT QUEUE
-// --------------------------------------------------
+// ---------------- QUEUE ----------------
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
@@ -69,9 +64,7 @@ void CompressionEngine::enqueueEvent(const EventWindow& event)
     cv.notify_one();
 }
 
-// --------------------------------------------------
-// SHUTDOWN
-// --------------------------------------------------
+// ---------------- SHUTDOWN ----------------
 
 void CompressionEngine::shutdown()
 {
@@ -84,32 +77,10 @@ void CompressionEngine::shutdown()
     if (encoder)
         encoder->close();
 
-    logInfo("CompressionEngine shutdown complete");
+    logInfo("Shutdown complete");
 }
 
-// --------------------------------------------------
-// PRESSURE MODEL
-// --------------------------------------------------
-
-float CompressionEngine::computeCompressionPressure(const EventWindow& event)
-{
-    float sys = governor->computePressure();
-
-    float duration =
-        static_cast<float>(event.endFrame - event.startFrame);
-
-    float durationFactor =
-        std::min(1.0f, duration / (config.fps * 10.0f));
-
-    return std::clamp(
-        0.7f * sys + 0.3f * durationFactor,
-        0.0f, 1.0f
-    );
-}
-
-// --------------------------------------------------
-// WORKER LOOP
-// --------------------------------------------------
+// ---------------- WORKER ----------------
 
 void CompressionEngine::workerLoop()
 {
@@ -119,7 +90,6 @@ void CompressionEngine::workerLoop()
 
         {
             std::unique_lock<std::mutex> lock(mtx);
-
             cv.wait(lock, [&] {
                 return stop || !queue.empty();
                 });
@@ -135,48 +105,21 @@ void CompressionEngine::workerLoop()
     }
 }
 
-// --------------------------------------------------
-// CORE PIPELINE
-// --------------------------------------------------
-
-// --------------------------------------------------
-// CORE PIPELINE (PHASE 4: TIME-AWARE VERSION)
-// --------------------------------------------------
+// ---------------- CORE PIPELINE ----------------
 
 void CompressionEngine::processEvent(const EventWindow& event)
 {
     uint8_t* raw = buffer->getFramePtr();
     if (!raw)
-    {
-        logError("Null frame pointer");
         return;
-    }
 
     std::string path =
         storage->buildPath(event.startFrame, event.endFrame, event.trigger);
-
-    float pressure = computeCompressionPressure(event);
 
     logInfo("EVENT START | " + event.trigger);
 
     cv::Mat prevFrame;
     bool opened = false;
-
-    float smoothedImportance = 0.5f;
-
-    uint64_t peak =
-        (event.startFrame + event.endFrame) >> 1;
-
-    // ---------------- SCHEDULING ----------------
-    float effectiveFPS =
-        config.fps * (1.0f - 0.6f * pressure);
-
-    effectiveFPS = std::clamp(effectiveFPS, 6.0f, (float)config.fps);
-
-    auto frameInterval =
-        std::chrono::microseconds(
-            (int)(1e6f / effectiveFPS)
-        );
 
     auto nextTick = std::chrono::steady_clock::now();
 
@@ -184,7 +127,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
         i < event.endFrame && !stop;
         ++i)
     {
-        nextTick += frameInterval;
+        nextTick += std::chrono::microseconds(1000000 / config.fps);
 
         cv::Mat frame(
             FRAME_HEIGHT,
@@ -196,31 +139,24 @@ void CompressionEngine::processEvent(const EventWindow& event)
         if (frame.empty())
             continue;
 
-        // ---------------- IMPORTANCE ----------------
-        ImportanceSignal sig =
-            importance->analyze(frame, prevFrame, i, peak);
-
-        float importanceScore = sig.score;
-
-        float adjusted =
-            importanceScore * (1.0f - 0.5f * pressure);
-
-        smoothedImportance =
-            0.88f * smoothedImportance +
-            0.12f * std::clamp(adjusted, 0.0f, 1.0f);
-
-        // ---------------- GOVERNOR ----------------
-        if (governor->shouldSkipFrame(smoothedImportance))
-            continue;
-
-        int crf = governor->adaptiveCRF(
-            policy->computeCRF(smoothedImportance)
+        // ---------------- SINGLE DECISION SOURCE ----------------
+        auto decision = orchestrator->compute(
+            frame,
+            prevFrame,
+            i,
+            (event.startFrame + event.endFrame) >> 1,
+            event.trigger
         );
 
-        // ---------------- ENCODER ----------------
+        if (decision.dropFrame)
+        {
+            prevFrame = frame;
+            continue;
+        }
+
         if (!opened)
         {
-            if (!encoder->open(path, crf))
+            if (!encoder->open(path, decision.crf))
             {
                 logError("Encoder failed");
                 return;
@@ -231,8 +167,15 @@ void CompressionEngine::processEvent(const EventWindow& event)
         encoder->writeFrame(frame);
         prevFrame = frame;
 
-        // ---------------- REAL TIMING CONTROL ----------------
-        std::this_thread::sleep_until(nextTick);
+        // ---------------- CPU ONLY AFFECTS TIMING ----------------
+        float pressure = governor->computePressure();
+
+        std::this_thread::sleep_until(
+            nextTick +
+            std::chrono::microseconds(
+                (int)(pressure * 5000) // pacing only
+            )
+        );
     }
 
     if (opened)

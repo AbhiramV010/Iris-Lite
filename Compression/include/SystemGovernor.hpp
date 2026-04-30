@@ -6,10 +6,6 @@ public:
     float getCpuLoad();
     float getThermalLoad();
 
-    // FINAL OUTPUT: single control signal
+    // PURE OBSERVABILITY SIGNAL (0–1)
     float computePressure();
-
-    // NEW: helpers for encoder control
-    int adaptiveCRF(int baseCRF);
-    bool shouldSkipFrame(float importance);
 };

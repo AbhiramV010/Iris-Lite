@@ -7,16 +7,13 @@
 #include <atomic>
 #include <memory>
 
-#include <opencv2/objdetect.hpp>
-
 #include "EventTypes.hpp"
 #include "Config.hpp"
-#include "CompressionPolicy.hpp"
+#include "CompressionOrchestrator.hpp"
 #include "H264Encoder.hpp"
 #include "SharedFrameBuffer.hpp"
 #include "SystemGovernor.hpp"
 #include "EventCluster.hpp"
-#include "ImportanceEngine.hpp"
 #include "StorageManager.hpp"
 
 class CompressionEngine
@@ -30,8 +27,6 @@ private:
     void workerLoop();
     void processEvent(const EventWindow& event);
 
-    float computeCompressionPressure(const EventWindow& event);
-
 private:
     Config config;
 
@@ -42,16 +37,12 @@ private:
     std::mutex mtx;
     std::condition_variable cv;
 
-    std::unique_ptr<CompressionPolicy> policy;
+    // CORE SYSTEMS
+    std::unique_ptr<CompressionOrchestrator> orchestrator;
     std::unique_ptr<H264Encoder> encoder;
     std::unique_ptr<SharedFrameBuffer> buffer;
     std::unique_ptr<SystemGovernor> governor;
-    std::unique_ptr<ImportanceEngine> importance;
     std::unique_ptr<StorageManager> storage;
-
-    // -------- FACE DETECTION --------
-    cv::CascadeClassifier faceCascade;
-    bool faceEnabled = false;
 
     EventCluster cluster;
 };
