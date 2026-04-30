@@ -6,9 +6,9 @@
 
 Project Programming by Abhiram Vadali & Shreyash Thakur
 
-README.md written by Subeg Singh Gill
-
 Lab Report by Abhiram V, Shreyash T, Subeg G, and Atharv R.
+
+README.md written by Subeg Singh Gill
 
 ---
 
