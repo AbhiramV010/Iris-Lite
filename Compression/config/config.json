@@ -13,14 +13,5 @@
   "use_edges": true,
 
   "face_model_path": "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
-  "face_detect_interval": 10,
-
-  "privacy_zones": [
-    {
-      "x": 100,
-      "y": 100,
-      "w": 200,
-      "h": 200
-    }
-  ]
+  "face_detect_interval": 10
 }
