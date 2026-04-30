@@ -13,7 +13,7 @@ CompressionOrchestrator::CompressionOrchestrator(
 {
 }
 
-// ---------------- MAIN DECISION PIPELINE ----------------
+// ---------------- MAIN PIPELINE ----------------
 
 CompressionOrchestrator::Decision CompressionOrchestrator::compute(
     const cv::Mat& frame,
@@ -24,37 +24,40 @@ CompressionOrchestrator::Decision CompressionOrchestrator::compute(
 {
     Decision d{};
 
-    // 1. PERCEPTION
+    if (!importance || !policy)
+        return d;
+
+    // ---------------- PERCEPTION ----------------
     auto sig = importance->analyze(frame, prev, frameIndex, peakFrame);
     float engineScore = sig.score;
 
-    // 2. MEMORY BIAS (learned trigger correction)
-    float bias = memory->getBias(trigger);
+    // ---------------- MEMORY ----------------
+    float bias = 0.0f;
+    if (memory)
+        bias = memory->getBias(trigger);
 
-    // 3. PURE FUSION (NO SYSTEM CONTROL)
+    // ---------------- FUSION ----------------
     d.importance = fuse(engineScore, bias);
 
-    // 4. DROP LOGIC (PURE SEMANTIC THRESHOLD)
+    // ---------------- DROP ----------------
     d.dropFrame = shouldDrop(d.importance);
 
-    // 5. CRF MAPPING (ONLY IMPORTANCE DRIVEN)
+    // ---------------- QUALITY (CPU-INDENT) ----------------
     d.crf = policy->computeCRF(d.importance);
 
-    // 6. FPS is informational ONLY (not used downstream)
+    // informational only
     d.fps = policy->computeFPS(d.importance);
 
     return d;
 }
 
-// ---------------- FUSION MODEL ----------------
+// ---------------- FUSION ----------------
 
 float CompressionOrchestrator::fuse(
     float engineScore,
     float memoryBias)
 {
     float s = engineScore + memoryBias;
-
-    // keep bounded semantic correction only
     return std::clamp(s, 0.0f, 1.0f);
 }
 
@@ -62,6 +65,6 @@ float CompressionOrchestrator::fuse(
 
 bool CompressionOrchestrator::shouldDrop(float importance)
 {
-    // hard semantic cutoff only
-    return importance < 0.15f;
+    // ultra-conservative drop
+    return importance < 0.10f;
 }

@@ -23,12 +23,21 @@ bool CompressionEngine::initialize(const Config& cfg)
         true
     );
 
+   
+    importance = std::make_unique<ImportanceEngine>(
+        config.perceptualWidth,
+        config.perceptualHeight,
+        config
+    );
+
+    policy = std::make_unique<CompressionPolicy>();
+
     orchestrator = std::make_unique<CompressionOrchestrator>(
         config,
-        nullptr,   // wire externally if needed
+        importance.get(),
         governor.get(),
-        nullptr,
-        nullptr
+        policy.get(),
+        nullptr   // memory optional
     );
 
     if (!buffer->initialize() || !buffer->isValid())
@@ -74,7 +83,7 @@ void CompressionEngine::shutdown()
     if (worker.joinable())
         worker.join();
 
-    if (encoder)
+    if (encoder && encoder->isOpen())
         encoder->close();
 
     logInfo("Shutdown complete");
@@ -90,6 +99,7 @@ void CompressionEngine::workerLoop()
 
         {
             std::unique_lock<std::mutex> lock(mtx);
+
             cv.wait(lock, [&] {
                 return stop || !queue.empty();
                 });
@@ -111,7 +121,10 @@ void CompressionEngine::processEvent(const EventWindow& event)
 {
     uint8_t* raw = buffer->getFramePtr();
     if (!raw)
+    {
+        logError("Null frame pointer");
         return;
+    }
 
     std::string path =
         storage->buildPath(event.startFrame, event.endFrame, event.trigger);
@@ -121,14 +134,21 @@ void CompressionEngine::processEvent(const EventWindow& event)
     cv::Mat prevFrame;
     bool opened = false;
 
+    auto baseInterval =
+        std::chrono::microseconds(1000000 / config.fps);
+
     auto nextTick = std::chrono::steady_clock::now();
+
+    const uint64_t peak =
+        (event.startFrame + event.endFrame) >> 1;
 
     for (uint64_t i = event.startFrame;
         i < event.endFrame && !stop;
         ++i)
     {
-        nextTick += std::chrono::microseconds(1000000 / config.fps);
+        nextTick += baseInterval;
 
+       
         cv::Mat frame(
             FRAME_HEIGHT,
             FRAME_WIDTH,
@@ -139,21 +159,25 @@ void CompressionEngine::processEvent(const EventWindow& event)
         if (frame.empty())
             continue;
 
-        // ---------------- SINGLE DECISION SOURCE ----------------
+        cv::Mat safeFrame = frame.clone();
+
+        // ---------------- DECISION ----------------
         auto decision = orchestrator->compute(
-            frame,
+            safeFrame,
             prevFrame,
             i,
-            (event.startFrame + event.endFrame) >> 1,
+            peak,
             event.trigger
         );
 
+        // ---------------- DROP ----------------
         if (decision.dropFrame)
         {
-            prevFrame = frame;
+            prevFrame = safeFrame;
             continue;
         }
 
+        // ---------------- ENCODER ----------------
         if (!opened)
         {
             if (!encoder->open(path, decision.crf))
@@ -164,21 +188,21 @@ void CompressionEngine::processEvent(const EventWindow& event)
             opened = true;
         }
 
-        encoder->writeFrame(frame);
-        prevFrame = frame;
+        encoder->writeFrame(safeFrame);
+        prevFrame = safeFrame;
 
-        // ---------------- CPU ONLY AFFECTS TIMING ----------------
+        // ---------------- CPU AFFECTS TIMING ONLY ----------------
         float pressure = governor->computePressure();
 
-        std::this_thread::sleep_until(
-            nextTick +
+        auto delay =
             std::chrono::microseconds(
-                (int)(pressure * 5000) // pacing only
-            )
-        );
+                static_cast<int>(pressure * 4000) // tighter control
+            );
+
+        std::this_thread::sleep_until(nextTick + delay);
     }
 
-    if (opened)
+    if (opened && encoder->isOpen())
         encoder->close();
 
     logInfo("EVENT END | saved=" + path);

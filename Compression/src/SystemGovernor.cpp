@@ -1,60 +1,70 @@
-#include "SystemGovernor.hpp"
-#include <fstream>
+#include "CompressionOrchestrator.hpp"
 #include <algorithm>
-#include <cmath>
 
-// ---------------- CPU LOAD ----------------
+// ---------------- CONSTRUCTOR ----------------
 
-float SystemGovernor::getCpuLoad()
+CompressionOrchestrator::CompressionOrchestrator(
+    const Config& cfg_,
+    ImportanceEngine* imp,
+    SystemGovernor* gov,
+    CompressionPolicy* pol,
+    ImportanceMemory* mem)
+    : cfg(cfg_), importance(imp), governor(gov), policy(pol), memory(mem)
 {
-    std::ifstream file("/proc/stat");
-
-    std::string cpu;
-    long user, nice, system, idle;
-
-    file >> cpu >> user >> nice >> system >> idle;
-
-    static long prevIdle = 0;
-    static long prevTotal = 0;
-
-    long total = user + nice + system + idle;
-
-    long idleDiff = idle - prevIdle;
-    long totalDiff = total - prevTotal;
-
-    prevIdle = idle;
-    prevTotal = total;
-
-    if (totalDiff <= 0) return 0.0f;
-
-    return 1.0f - (float)idleDiff / totalDiff;
 }
 
-// ---------------- THERMAL LOAD ----------------
+// ---------------- MAIN PIPELINE ----------------
 
-float SystemGovernor::getThermalLoad()
+CompressionOrchestrator::Decision CompressionOrchestrator::compute(
+    const cv::Mat& frame,
+    const cv::Mat& prev,
+    uint64_t frameIndex,
+    uint64_t peakFrame,
+    const std::string& trigger)
 {
-    std::ifstream file("/sys/class/thermal/thermal_zone0/temp");
+    Decision d{};
 
-    float temp = 0;
-    file >> temp;
+    if (!importance || !policy)
+        return d;
 
-    // normalize (85°C -> 1.0)
-    return std::min(1.0f, temp / 85000.0f);
+    // ---------------- PERCEPTION ----------------
+    auto sig = importance->analyze(frame, prev, frameIndex, peakFrame);
+    float engineScore = sig.score;
+
+    // ---------------- MEMORY ----------------
+    float bias = 0.0f;
+    if (memory)
+        bias = memory->getBias(trigger);
+
+    // ---------------- FUSION ----------------
+    d.importance = fuse(engineScore, bias);
+
+    // ---------------- DROP ----------------
+    d.dropFrame = shouldDrop(d.importance);
+
+    // ---------------- QUALITY (CPU-INDENT) ----------------
+    d.crf = policy->computeCRF(d.importance);
+
+    // informational only
+    d.fps = policy->computeFPS(d.importance);
+
+    return d;
 }
 
-// ---------------- PRESSURE SIGNAL ----------------
-// PURE METRIC ONLY — NO CONTROL ROLE
+// ---------------- FUSION ----------------
 
-float SystemGovernor::computePressure()
+float CompressionOrchestrator::fuse(
+    float engineScore,
+    float memoryBias)
 {
-    float cpu = getCpuLoad();
-    float temp = getThermalLoad();
+    float s = engineScore + memoryBias;
+    return std::clamp(s, 0.0f, 1.0f);
+}
 
-    float raw = 0.7f * cpu + 0.3f * temp;
+// ---------------- DROP POLICY ----------------
 
-    static float ema = 0.0f;
-    ema = 0.85f * ema + 0.15f * raw;
-
-    return std::clamp(ema, 0.0f, 1.0f);
+bool CompressionOrchestrator::shouldDrop(float importance)
+{
+    // ultra-conservative drop
+    return importance < 0.10f;
 }
