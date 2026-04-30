@@ -3,17 +3,17 @@
 class CompressionPolicy
 {
 public:
-    float motion(float v) const;
-    float spatial(float v) const;
-    float face(bool detected) const;
-    float region(float v) const;
+    // Pure decision mapping ONLY
 
-    float importanceScore(float motion,
-        float spatial,
-        float temporal) const;
+    float fuseImportance(float engineScore,
+        float faceBoost,
+        float systemPressure) const;
 
     int computeCRF(float importance) const;
     int computeFPS(float importance) const;
+
+    bool shouldSkipFrame(float importance,
+        float systemPressure) const;
 
 private:
     float clamp01(float v) const;

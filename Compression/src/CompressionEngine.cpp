@@ -2,12 +2,9 @@
 #include "logging.hpp"
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/objdetect.hpp>
-#include "SharedMemoryConfig.hpp"
 #include <chrono>
 #include <thread>
 #include <algorithm>
-#include <cmath>
 
 // --------------------------------------------------
 // INITIALIZATION
@@ -45,24 +42,10 @@ bool CompressionEngine::initialize(const Config& cfg)
 
     storage->ensureReady();
 
-    // -------- FACE DETECTOR (LOAD ONCE) --------
-    if (config.enableFace)
-    {
-        if (!faceCascade.load("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"))
-        {
-            logWarn("Face cascade not found → disabling face detection");
-            faceEnabled = false;
-        }
-        else
-        {
-            faceEnabled = true;
-        }
-    }
-
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine READY (Phase 2 stable)");
+    logInfo("CompressionEngine READY (Phase 4 stable core)");
     return true;
 }
 
@@ -156,14 +139,12 @@ void CompressionEngine::workerLoop()
 // CORE PIPELINE
 // --------------------------------------------------
 
+// --------------------------------------------------
+// CORE PIPELINE (PHASE 4: TIME-AWARE VERSION)
+// --------------------------------------------------
+
 void CompressionEngine::processEvent(const EventWindow& event)
 {
-    if (!buffer || !encoder || !importance)
-    {
-        logError("Engine not initialized");
-        return;
-    }
-
     uint8_t* raw = buffer->getFramePtr();
     if (!raw)
     {
@@ -183,16 +164,28 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
     float smoothedImportance = 0.5f;
 
-    uint64_t peak = (event.startFrame + event.endFrame) >> 1;
+    uint64_t peak =
+        (event.startFrame + event.endFrame) >> 1;
 
-    // -------- FACE STATE --------
-    int faceSkip = 0;
-    bool faceDetected = false;
+    // ---------------- SCHEDULING ----------------
+    float effectiveFPS =
+        config.fps * (1.0f - 0.6f * pressure);
+
+    effectiveFPS = std::clamp(effectiveFPS, 6.0f, (float)config.fps);
+
+    auto frameInterval =
+        std::chrono::microseconds(
+            (int)(1e6f / effectiveFPS)
+        );
+
+    auto nextTick = std::chrono::steady_clock::now();
 
     for (uint64_t i = event.startFrame;
         i < event.endFrame && !stop;
         ++i)
     {
+        nextTick += frameInterval;
+
         cv::Mat frame(
             FRAME_HEIGHT,
             FRAME_WIDTH,
@@ -200,50 +193,23 @@ void CompressionEngine::processEvent(const EventWindow& event)
             raw
         );
 
-        if (!frame.data)
+        if (frame.empty())
             continue;
 
-        // -------- FACE DETECTION (THROTTLED) --------
-        if (faceEnabled && (faceSkip++ % 10 == 0))
-        {
-            cv::Mat small, gray;
-            cv::resize(frame, small, cv::Size(320, 180));
-            cv::cvtColor(small, gray, cv::COLOR_BGR2GRAY);
-
-            std::vector<cv::Rect> faces;
-
-            faceCascade.detectMultiScale(
-                gray,
-                faces,
-                1.1,
-                3,
-                0,
-                cv::Size(30, 30)
-            );
-
-            faceDetected = !faces.empty();
-        }
-
-        // -------- IMPORTANCE --------
+        // ---------------- IMPORTANCE ----------------
         ImportanceSignal sig =
             importance->analyze(frame, prevFrame, i, peak);
 
         float importanceScore = sig.score;
 
-        if (faceDetected)
-            importanceScore = std::min(1.0f, importanceScore + 0.15f);
-
-        // -------- PRESSURE ADJUST --------
         float adjusted =
             importanceScore * (1.0f - 0.5f * pressure);
 
-        adjusted = std::clamp(adjusted, 0.0f, 1.0f);
-
         smoothedImportance =
             0.88f * smoothedImportance +
-            0.12f * adjusted;
+            0.12f * std::clamp(adjusted, 0.0f, 1.0f);
 
-        // -------- GOVERNOR --------
+        // ---------------- GOVERNOR ----------------
         if (governor->shouldSkipFrame(smoothedImportance))
             continue;
 
@@ -251,7 +217,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
             policy->computeCRF(smoothedImportance)
         );
 
-        // -------- ENCODER --------
+        // ---------------- ENCODER ----------------
         if (!opened)
         {
             if (!encoder->open(path, crf))
@@ -265,7 +231,8 @@ void CompressionEngine::processEvent(const EventWindow& event)
         encoder->writeFrame(frame);
         prevFrame = frame;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // ---------------- REAL TIMING CONTROL ----------------
+        std::this_thread::sleep_until(nextTick);
     }
 
     if (opened)

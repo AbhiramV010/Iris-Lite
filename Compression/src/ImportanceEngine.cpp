@@ -34,7 +34,7 @@ float ImportanceEngine::computeTemporal(uint64_t frame, uint64_t peak)
 }
 
 // --------------------------------------------------
-// ANALYZE
+// ANALYZE (ONLY PERCEPTION SYSTEM)
 // --------------------------------------------------
 
 ImportanceSignal ImportanceEngine::analyze(
@@ -50,7 +50,6 @@ ImportanceSignal ImportanceEngine::analyze(
 
     frameCounter++;
 
-    // ---------------- PREPROCESS ----------------
     cv::Mat resized, gray;
     cv::resize(frame, resized, cv::Size(w, h));
     cv::cvtColor(resized, gray, cv::COLOR_BGR2GRAY);
@@ -70,7 +69,7 @@ ImportanceSignal ImportanceEngine::analyze(
         motionVal = cv::mean(diff)[0] / 255.0f;
     }
 
-    s.motion = 0.80f * prevMotion + 0.20f * motionVal;
+    s.motion = 0.8f * prevMotion + 0.2f * motionVal;
     prevMotion = s.motion;
 
     // ---------------- SPATIAL ----------------
@@ -78,32 +77,19 @@ ImportanceSignal ImportanceEngine::analyze(
     cv::Canny(gray, edges, 50, 150);
 
     s.spatial =
-        static_cast<float>(cv::countNonZero(edges)) /
-        (w * h + 1e-6f);
+        (float)cv::countNonZero(edges) / (w * h + 1e-6f);
 
     // ---------------- REGION ----------------
-    int cx = w / 4;
-    int cy = h / 4;
-    int cw = w / 2;
-    int ch = h / 2;
+    cv::Rect center(w / 4, h / 4, w / 2, h / 2);
 
-    cv::Rect center(cx, cy, cw, ch);
-
-    float regionVal = 0.0f;
-    if (center.width > 0 && center.height > 0)
-    {
-        cv::Mat roi = edges(center);
-        regionVal =
-            static_cast<float>(cv::countNonZero(roi)) /
-            (cw * ch + 1e-6f);
-    }
-
-    s.region = regionVal;
+    cv::Mat roi = edges(center);
+    s.region =
+        (float)cv::countNonZero(roi) / (roi.total() + 1e-6f);
 
     // ---------------- TEMPORAL ----------------
     s.temporal = computeTemporal(frameIndex, peakFrame);
 
-    // ---------------- FACE DETECTION (THROTTLED) ----------------
+    // ---------------- FACE ----------------
     float faceScore = lastFaceScore;
 
     if (cfg.enableFace && faceReady &&
@@ -111,27 +97,19 @@ ImportanceSignal ImportanceEngine::analyze(
     {
         std::vector<cv::Rect> faces;
 
-        faceCascade.detectMultiScale(
-            gray,
-            faces,
-            1.1,
-            3,
-            0,
-            cv::Size(20, 20)
-        );
+        faceCascade.detectMultiScale(gray, faces, 1.1, 3);
 
         if (!faces.empty())
         {
-            // normalize by area
             float maxArea = 0.0f;
-            for (const auto& f : faces)
-                maxArea = std::max(maxArea, (float)(f.area()));
+            for (auto& f : faces)
+                maxArea = std::max(maxArea, (float)f.area());
 
             faceScore = std::min(1.0f, maxArea / (w * h * 0.25f));
         }
         else
         {
-            faceScore *= 0.9f; // decay instead of hard drop
+            faceScore *= 0.9f;
         }
 
         lastFaceScore = faceScore;
@@ -139,7 +117,7 @@ ImportanceSignal ImportanceEngine::analyze(
 
     s.face = faceScore;
 
-    // ---------------- FUSION ----------------
+    // ---------------- FINAL SCORE ----------------
     float raw =
         0.50f * s.motion +
         0.20f * s.spatial +
@@ -151,17 +129,6 @@ ImportanceSignal ImportanceEngine::analyze(
         std::log1p(raw * 6.5f) / std::log1p(6.5f);
 
     s.score = std::clamp(normalized, 0.0f, 1.0f);
-
-    // ---------------- LOG ----------------
-    if (frameIndex % 40 == 0)
-    {
-        logInfo(
-            "IMP | m=" + std::to_string(s.motion) +
-            " s=" + std::to_string(s.spatial) +
-            " f=" + std::to_string(s.face) +
-            " score=" + std::to_string(s.score)
-        );
-    }
 
     return s;
 }
