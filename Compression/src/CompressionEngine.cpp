@@ -1,6 +1,6 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
-
+#include "SharedMemoryConfig.hpp"
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
