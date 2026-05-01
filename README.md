@@ -1,6 +1,17 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](http://creativecommons.org/licenses/by-nc-sa/4.0/)
 
-# Iris_Lite Camera System
+<h1 align="center">
+  <a href="https://git.io/typing-svg">
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=Iris-Lite;A spatially-aware camera system;Working to reduce storage usage;and increase environmental friendliness!; alt="Typing SVG" />
+  </a>
+</h1>
+
+
+<h2 align="center">
+  <a href="https://git.io/typing-svg">
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=STEAM ICAC 2026;Computer Science Event; alt="Typing SVG" />
+  </a>
+</h2>
 
 **STEAM IC 2026 Computer Science Project**
 
