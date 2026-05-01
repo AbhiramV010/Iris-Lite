@@ -22,7 +22,7 @@ if 0.0 not in df_plot['Time'].values:
     df_plot = pd.concat([zero_row, df_plot]).sort_values('Time').reset_index(drop=True)
 
 plt.style.use('default') 
-fig, ax = plt.subplots(figsize=(12, 6), facecolor='#FFFFFF')
+fig, ax = plt.subplots(figsize=(16, 9), facecolor='#FFFFFF')
 ax.set_facecolor('#FFFFFF')
 
 styles = {
@@ -37,21 +37,22 @@ styles = {
 for label, style in styles.items():
     ax.plot(df_plot['Time'], df_plot[label], label=label,
              color=style['color'], marker=style['marker'], 
-             linewidth=1.5, markersize=6)
+             linewidth=3, markersize=10)
 
-ax.set_title('Aggregated CPU Usage Of The Iris-Lite Across All Systems', color='black', fontsize=14, pad=20)
-ax.set_xlabel('Time (mins)', color='black')
-ax.set_ylabel('CPU Usage (% overall)', color='black')
+ax.set_title('Aggregated CPU Usage Of The Iris-Lite Across All Systems', color='black', fontsize=24, pad=30)
+ax.set_xlabel('Time (mins)', color='black', fontsize=20, labelpad=15)
+ax.set_ylabel('CPU Usage (% overall)', color='black', fontsize=20, labelpad=15)
 
 ax.set_xticks(np.arange(0, 10.5, 0.5))
 ax.set_yticks([0, 25, 50, 75, 100])
-ax.tick_params(colors='black')
-ax.set_ylim(0, 100)
+ax.tick_params(axis='both', which='major', labelsize=16, colors='black')
+
+ax.set_ylim(0, 105)
 ax.set_xlim(0, 10)
 
-ax.grid(color='#E0E0E0', linestyle='-', linewidth=0.5)
+ax.grid(color='#E0E0E0', linestyle='-', linewidth=1)
 ax.legend(facecolor='#FFFFFF', edgecolor='#CCCCCC', labelcolor='black', 
-           bbox_to_anchor=(1, 1), loc='upper left')
+           fontsize=18, bbox_to_anchor=(1, 1), loc='upper left')
 
 ax.spines['bottom'].set_color('black')
 ax.spines['left'].set_color('black')
@@ -59,6 +60,5 @@ ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 
 plt.tight_layout()
-
 plt.savefig('log/irisLiteCPUGraph.png', facecolor='#FFFFFF')
 plt.show()
