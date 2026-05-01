@@ -2,15 +2,16 @@
 
 <p align="center">
   <a href="https://git.io/typing-svg">
-    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=Iris-Lite;A+spatially-aware+camera+system;Working+to+reduce+storage+usage;and+increase+environmental+friendliness" alt="Iris-Lite Banner" />
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=0000FF&center=true&vCenter=true&width=1000&lines=Iris-Lite;A+spatially-aware+camera+system;Working+to+reduce+storage+usage;and+increase+environmental+friendliness" alt="Iris-Lite Banner" />
   </a>
 </p>
 
 <p align="center">
   <a href="https://git.io/typing-svg">
-    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=STEAM+ICAC+2026;Computer+Science+Event" alt="Event Info" />
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=2500&color=0000FF&center=true&vCenter=true&width=1000&lines=STEAM+ICAC+2026;Computer+Science+Event" alt="Event Info" />
   </a>
 </p>
+
 **STEAM IC 2026 Computer Science Project**
 
 Project Programming by Abhiram Vadali & Shreyash Thakur
