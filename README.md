@@ -1,10 +1,8 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](http://creativecommons.org/licenses/by-nc-sa/4.0/)
 
-# Iris-Lite
-[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=Iris-Lite;A+spatially-aware+camera+system;Working+to+reduce+storage+usage;and+increase+environmental+friendliness)](https://git.io/typing-svg)
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=5389A1&center=true&vCenter=true&width=600&lines=Iris-Lite;A+spatially-aware+camera+system;Working+to+reduce+storage+usage;and+increase+environmental+friendliness)](https://git.io/typing-svg)
 
-## STEAM ICAC 2026
-[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=STEAM+ICAC+2026;Computer+Science+Event)](https://git.io/typing-svg)
+[![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=2500&color=5389A1&center=true&vCenter=true&width=600&lines=STEAM+ICAC+2026;Computer+Science+Event)](https://git.io/typing-svg)
 
 **STEAM IC 2026 Computer Science Project**
 
