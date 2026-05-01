@@ -199,10 +199,6 @@ Licensed under **CC BY-NC-SA 4.0** — [creativecommons.org/licenses/by-nc-sa/4.
 Any modifications or derivatives **must** be redistributed under the same license with full attribution.
 
 ---
-## Lab Report
-Lab report was written by Abhiram V, Shreyash T, Subeg G, and Atharv R
-https://bit.ly/4cMHsyU
----
 
 ## Acknowledgements
 
