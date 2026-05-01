@@ -55,8 +55,8 @@ set(SOURCES
     src/StorageManager.cpp
     src/EventCluster.cpp
     src/ImportanceMemory.cpp
-    src/StorageManager.cpp
     src/Dashboard.cpp
+    src/CompressionOrchestrator.cpp
 )
 
 # ---------------- EXECUTABLE ----------------
