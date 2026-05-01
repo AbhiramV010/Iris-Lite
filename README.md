@@ -2,7 +2,7 @@
 
 <h1 align="center">
   <a href="https://git.io/typing-svg">
-    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=Iris-Lite;A spatially-aware camera system;Working to reduce storage usage;and increase environmental friendliness!; alt="Typing SVG" />
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=35&pause=1000&color=33FF33&center=true&vCenter=true&width=600&lines=Iris-Lite;A spatially-aware camera system;Working to reduce storage usage;and increase environmental friendliness; alt="Typing SVG" />
   </a>
 </h1>
 
