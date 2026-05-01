@@ -1,14 +1,24 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](http://creativecommons.org/licenses/by-nc-sa/4.0/)
 
-# Iris_Lite Camera System
+<p align="center">
+  <a href="https://git.io/typing-svg">
+    <img src="https://readme-typing-svg.demolab.com?font=Roboto+Mono&weight=700&size=35&pause=1000&color=135aa4&center=true&vCenter=true&width=1000&lines=Iris-Lite;A+spatially-aware+camera+system;Working+to+reduce+storage+usage;and+increase+environmental+friendliness" alt="Iris-Lite Banner" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://git.io/typing-svg">
+    <img src="https://readme-typing-svg.demolab.com?font=Roboto+Mono&weight=700&size=35&pause=2500&color=135aa4&center=true&vCenter=true&width=1000&lines=STEAM+ICAC+2026;Submission+For+The+Computer+Science+Event;Sustainable,+Private,+Scalable" alt="Event Info" />
+  </a>
+</p>
 
 **STEAM IC 2026 Computer Science Project**
 
 Project Programming by Abhiram Vadali & Shreyash Thakur
 
-README.md written by Subeg Singh Gill
-
 Lab Report by Abhiram V, Shreyash T, Subeg G, and Atharv R.
+
+README.md written by Subeg Singh Gill
 
 ---
 
