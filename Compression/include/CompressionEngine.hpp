@@ -43,6 +43,7 @@ private:
     std::unique_ptr<SharedFrameBuffer> buffer;
     std::unique_ptr<SystemGovernor> governor;
     std::unique_ptr<StorageManager> storage;
-
+    std::unique_ptr<ImportanceEngine> importance;
+    std::unique_ptr<CompressionPolicy> policy;
     EventCluster cluster;
 };

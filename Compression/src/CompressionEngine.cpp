@@ -150,8 +150,8 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
        
         cv::Mat frame(
-            FRAME_HEIGHT,
-            FRAME_WIDTH,
+            config.encodeHeight,
+            config.encodeWidth,
             CV_8UC3,
             raw
         );
