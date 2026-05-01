@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://git.io/typing-svg">
-    <img src="https://readme-typing-svg.demolab.com?font=Roboto+Mono&weight=700&size=35&pause=2500&color=135aa4&center=true&vCenter=true&width=1000&lines=STEAM+ICAC+2026;Submission+For+The+Computer+Science+Event;Sustainable,+Private,+Scalable" alt="Event Info" />
+    <img src="https://readme-typing-svg.demolab.com?font=Roboto+Mono&weight=700&size=25&pause=2500&color=135aa4&center=true&vCenter=true&width=1000&lines=STEAM+ICAC+2026;Submission+For+The+Computer+Science+Event;Sustainable,+Private,+Scalable" alt="Event Info" />
   </a>
 </p>
 
@@ -202,6 +202,5 @@ Any modifications or derivatives **must** be redistributed under the same licens
 
 ## Acknowledgements
 
-- **Macmeet B** — For lending the Raspberry Pi 4B that made this project possible
 - **Mr. Hadley** — For his support throughout development
-- **Mrs. Bassi and Mr. Gill** - For allowing us to conduct tests in their home
+- **Macmeet B** — For lending the Raspberry Pi 4B that made this project possible
