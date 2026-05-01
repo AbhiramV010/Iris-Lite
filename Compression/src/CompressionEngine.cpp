@@ -119,12 +119,14 @@ void CompressionEngine::workerLoop()
 
 void CompressionEngine::processEvent(const EventWindow& event)
 {
-    uint8_t* raw = buffer->getFramePtr();
-    if (!raw)
-    {
-        logError("Null frame pointer");
+    uint8_t* bufferBase = buffer->getFrameBufferBase();
+    uint32_t* sizes = buffer->getFrameSizes();
+    uint64_t* headTail = buffer->getHeadTail();
+
+    if (!bufferBase || !sizes || !headTail)
         return;
-    }
+
+    const int head = static_cast<int>(headTail[0]);
 
     std::string path =
         storage->buildPath(event.startFrame, event.endFrame, event.trigger);
@@ -134,50 +136,48 @@ void CompressionEngine::processEvent(const EventWindow& event)
     cv::Mat prevFrame;
     bool opened = false;
 
-    auto baseInterval =
-        std::chrono::microseconds(1000000 / config.fps);
+    auto tick = std::chrono::steady_clock::now();
 
-    auto nextTick = std::chrono::steady_clock::now();
+    const int range = static_cast<int>(event.endFrame - event.startFrame);
 
-    const uint64_t peak =
-        (event.startFrame + event.endFrame) >> 1;
-
-    for (uint64_t i = event.startFrame;
-        i < event.endFrame && !stop;
-        ++i)
+    for (int i = 0; i < range && !stop; ++i)
     {
-        nextTick += baseInterval;
+        tick += std::chrono::microseconds(1000000 / config.fps);
 
-       
-        cv::Mat frame(
-            config.encodeHeight,
-            config.encodeWidth,
-            CV_8UC3,
-            raw
-        );
+        // ---------------- FIXED SAFE RING INDEX ----------------
+        int index = (head - (range - i)) % FRAME_BUFFER_SIZE;
+        if (index < 0)
+            index += FRAME_BUFFER_SIZE;
+
+        uint32_t size = sizes[index];
+
+        if (size == 0 || size > SLOT_SIZE)
+            continue;
+
+        uint8_t* jpegPtr = bufferBase + (index * SLOT_SIZE);
+
+        cv::Mat raw(1, size, CV_8UC1, jpegPtr);
+        cv::Mat frame = cv::imdecode(raw, cv::IMREAD_COLOR);
 
         if (frame.empty())
             continue;
 
         cv::Mat safeFrame = frame.clone();
 
-        // ---------------- DECISION ----------------
         auto decision = orchestrator->compute(
             safeFrame,
             prevFrame,
-            i,
-            peak,
+            event.startFrame + i,
+            (event.startFrame + event.endFrame) >> 1,
             event.trigger
         );
 
-        // ---------------- DROP ----------------
         if (decision.dropFrame)
         {
             prevFrame = safeFrame;
             continue;
         }
 
-        // ---------------- ENCODER ----------------
         if (!opened)
         {
             if (!encoder->open(path, decision.crf))
@@ -191,15 +191,11 @@ void CompressionEngine::processEvent(const EventWindow& event)
         encoder->writeFrame(safeFrame);
         prevFrame = safeFrame;
 
-        // ---------------- CPU AFFECTS TIMING ONLY ----------------
         float pressure = governor->computePressure();
 
-        auto delay =
-            std::chrono::microseconds(
-                static_cast<int>(pressure * 4000) // tighter control
-            );
-
-        std::this_thread::sleep_until(nextTick + delay);
+        std::this_thread::sleep_until(
+            tick + std::chrono::microseconds((int)(pressure * 4000))
+        );
     }
 
     if (opened && encoder->isOpen())
@@ -207,3 +203,5 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
     logInfo("EVENT END | saved=" + path);
 }
+
+
