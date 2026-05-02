@@ -1,12 +1,15 @@
 #include "CompressionEngine.hpp"
 #include "logging.hpp"
 #include "SharedMemoryConfig.hpp"
+
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
 #include <algorithm>
 
-// ---------------- INIT ----------------
+// --------------------------------------------------
+// INIT
+// --------------------------------------------------
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -23,7 +26,6 @@ bool CompressionEngine::initialize(const Config& cfg)
         true
     );
 
-   
     importance = std::make_unique<ImportanceEngine>(
         config.perceptualWidth,
         config.perceptualHeight,
@@ -37,7 +39,7 @@ bool CompressionEngine::initialize(const Config& cfg)
         importance.get(),
         governor.get(),
         policy.get(),
-        nullptr   // memory optional
+        nullptr
     );
 
     if (!buffer->initialize() || !buffer->isValid())
@@ -51,29 +53,45 @@ bool CompressionEngine::initialize(const Config& cfg)
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine READY (Fidelity Mode)");
+    logInfo("CompressionEngine READY (STABLE MODE)");
     return true;
 }
 
-// ---------------- QUEUE ----------------
+// --------------------------------------------------
+// EVENT INPUT (CRITICAL FIX)
+// --------------------------------------------------
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
-    cluster.add(event);
+    // Always log input (debug visibility)
+    logInfo("EVENT IN | " + event.trigger);
 
-    if (!cluster.shouldFlush())
-        return;
+    // Cluster still exists, but we NEVER allow deadlock
+    cluster.add(event);
 
     auto events = cluster.flush();
 
-    std::lock_guard<std::mutex> lock(mtx);
-    for (const auto& e : events)
-        queue.push(e);
+    // SAFETY: if cluster returns empty, force single event
+    if (events.empty())
+    {
+        events.push_back(event);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+
+        for (const auto& e : events)
+            queue.push(e);
+    }
 
     cv.notify_one();
+
+    logInfo("QUEUE PUSHED | size=" + std::to_string(queue.size()));
 }
 
-// ---------------- SHUTDOWN ----------------
+// --------------------------------------------------
+// SHUTDOWN
+// --------------------------------------------------
 
 void CompressionEngine::shutdown()
 {
@@ -89,10 +107,14 @@ void CompressionEngine::shutdown()
     logInfo("Shutdown complete");
 }
 
-// ---------------- WORKER ----------------
+// --------------------------------------------------
+// WORKER THREAD
+// --------------------------------------------------
 
 void CompressionEngine::workerLoop()
 {
+    logInfo("Worker loop started");
+
     while (!stop)
     {
         EventWindow event;
@@ -115,7 +137,9 @@ void CompressionEngine::workerLoop()
     }
 }
 
-// ---------------- CORE PIPELINE ----------------
+// --------------------------------------------------
+// CORE PIPELINE
+// --------------------------------------------------
 
 void CompressionEngine::processEvent(const EventWindow& event)
 {
@@ -124,7 +148,10 @@ void CompressionEngine::processEvent(const EventWindow& event)
     uint64_t* headTail = buffer->getHeadTail();
 
     if (!bufferBase || !sizes || !headTail)
+    {
+        logError("Invalid SHM pointers");
         return;
+    }
 
     const int head = static_cast<int>(headTail[0]);
 
@@ -144,7 +171,6 @@ void CompressionEngine::processEvent(const EventWindow& event)
     {
         tick += std::chrono::microseconds(1000000 / config.fps);
 
-        // ---------------- FIXED SAFE RING INDEX ----------------
         int index = (head - (range - i)) % FRAME_BUFFER_SIZE;
         if (index < 0)
             index += FRAME_BUFFER_SIZE;
@@ -172,7 +198,8 @@ void CompressionEngine::processEvent(const EventWindow& event)
             event.trigger
         );
 
-        if (decision.dropFrame)
+        // IMPORTANT FIX: only soft-drop, never full silence
+        if (decision.dropFrame && decision.importance < 0.15f)
         {
             prevFrame = safeFrame;
             continue;
@@ -182,7 +209,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
         {
             if (!encoder->open(path, decision.crf))
             {
-                logError("Encoder failed");
+                logError("Encoder failed to open");
                 return;
             }
             opened = true;
@@ -203,5 +230,3 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
     logInfo("EVENT END | saved=" + path);
 }
-
-
