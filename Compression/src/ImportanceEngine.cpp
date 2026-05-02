@@ -30,11 +30,13 @@ ImportanceEngine::ImportanceEngine(int w_, int h_, const Config& cfg_)
 float ImportanceEngine::computeTemporal(uint64_t frame, uint64_t peak)
 {
     float dist = std::abs((int64_t)frame - (int64_t)peak);
-    return std::exp(-(dist * dist) / 120.0f);
+
+    // Sharper event peak (more perceptual focus)
+    return std::exp(-(dist * dist) / 60.0f);
 }
 
 // --------------------------------------------------
-// ANALYZE (ONLY PERCEPTION SYSTEM)
+// ANALYZE
 // --------------------------------------------------
 
 ImportanceSignal ImportanceEngine::analyze(
@@ -67,6 +69,10 @@ ImportanceSignal ImportanceEngine::analyze(
         cv::absdiff(gray, prevG, diff);
 
         motionVal = cv::mean(diff)[0] / 255.0f;
+
+        // Remove sensor noise / flicker
+        if (motionVal < 0.02f)
+            motionVal = 0.0f;
     }
 
     s.motion = 0.8f * prevMotion + 0.2f * motionVal;
@@ -79,12 +85,16 @@ ImportanceSignal ImportanceEngine::analyze(
     s.spatial =
         (float)cv::countNonZero(edges) / (w * h + 1e-6f);
 
-    // ---------------- REGION ----------------
+    // ---------------- REGION (CENTER PRIORITY) ----------------
     cv::Rect center(w / 4, h / 4, w / 2, h / 2);
 
     cv::Mat roi = edges(center);
-    s.region =
+
+    float regionVal =
         (float)cv::countNonZero(roi) / (roi.total() + 1e-6f);
+
+    // Slight bias toward center activity
+    s.region = std::min(1.0f, regionVal * 1.2f);
 
     // ---------------- TEMPORAL ----------------
     s.temporal = computeTemporal(frameIndex, peakFrame);
@@ -119,10 +129,10 @@ ImportanceSignal ImportanceEngine::analyze(
 
     // ---------------- FINAL SCORE ----------------
     float raw =
-        0.50f * s.motion +
+        0.35f * s.motion +
         0.20f * s.spatial +
         0.10f * s.region +
-        0.10f * s.temporal +
+        0.25f * s.temporal +
         0.10f * s.face;
 
     float normalized =

@@ -1,6 +1,5 @@
 #include "CompressionPolicy.hpp"
 #include <algorithm>
-#include <cmath>
 
 float CompressionPolicy::clamp01(float v) const
 {
@@ -8,7 +7,7 @@ float CompressionPolicy::clamp01(float v) const
 }
 
 // --------------------------------------------------
-// SINGLE FUSION POINT 
+// FUSION
 // --------------------------------------------------
 
 float CompressionPolicy::fuseImportance(float engineScore,
@@ -17,27 +16,32 @@ float CompressionPolicy::fuseImportance(float engineScore,
 {
     float s = clamp01(engineScore);
 
-    // face is now PURE boost
+    // face boost remains additive
     s = std::min(1.0f, s + faceBoost);
 
-    // pressure reduces perceived importance slightly
-    s *= (1.0f - 0.4f * clamp01(systemPressure));
+    // softer pressure penalty (prevents over-degradation)
+    s *= (1.0f - 0.25f * clamp01(systemPressure));
 
     return clamp01(s);
 }
 
 // --------------------------------------------------
-// ENCODING CONTROL
+// CRF TIERS (STABLE)
 // --------------------------------------------------
 
 int CompressionPolicy::computeCRF(float importance) const
 {
-    float inv = 1.0f - clamp01(importance);
+    importance = clamp01(importance);
 
-    int shift = static_cast<int>(std::pow(inv, 1.4f) * 14.0f);
-
-    return std::clamp(20 + shift, 18, 36);
+    if (importance > 0.75f) return 20;
+    if (importance > 0.50f) return 24;
+    if (importance > 0.30f) return 28;
+    return 32;
 }
+
+// --------------------------------------------------
+// FPS (INFO ONLY)
+// --------------------------------------------------
 
 int CompressionPolicy::computeFPS(float importance) const
 {
@@ -47,13 +51,23 @@ int CompressionPolicy::computeFPS(float importance) const
     return 8;
 }
 
+// --------------------------------------------------
+// PRESSURE-AWARE FRAME SKIP
+// --------------------------------------------------
+
 bool CompressionPolicy::shouldSkipFrame(float importance,
     float pressure) const
 {
-    if (pressure < 0.65f)
+    pressure = clamp01(pressure);
+
+    // Normal operation: keep everything
+    if (pressure < 0.75f)
         return false;
 
-    float threshold = 0.25f + (pressure - 0.65f) * 0.55f;
+    // Moderate pressure: drop only low-value frames
+    if (pressure < 0.9f)
+        return importance < 0.3f;
 
-    return importance < threshold;
+    // Critical pressure: aggressive drop
+    return importance < 0.5f;
 }

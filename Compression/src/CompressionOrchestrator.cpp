@@ -39,10 +39,23 @@ CompressionOrchestrator::Decision CompressionOrchestrator::compute(
     // ---------------- FUSION ----------------
     d.importance = fuse(engineScore, bias);
 
-    // ---------------- DROP ----------------
-    d.dropFrame = shouldDrop(d.importance);
+    // ---------------- PRESSURE ----------------
+    float pressure = governor ? governor->computePressure() : 0.0f;
 
-    // ---------------- QUALITY (CPU-INDENT) ----------------
+    // ---------------- DROP (WITH TEMPORAL PROTECTION) ----------------
+    static float lastImportance = 0.0f;
+
+    bool baseDrop = policy->shouldSkipFrame(d.importance, pressure);
+
+    // Protect continuity after important frames
+    bool protect =
+        (lastImportance > 0.6f) && (d.importance > 0.2f);
+
+    d.dropFrame = baseDrop && !protect;
+
+    lastImportance = d.importance;
+
+    // ---------------- QUALITY ----------------
     d.crf = policy->computeCRF(d.importance);
 
     // informational only
@@ -59,12 +72,4 @@ float CompressionOrchestrator::fuse(
 {
     float s = engineScore + memoryBias;
     return std::clamp(s, 0.0f, 1.0f);
-}
-
-// ---------------- DROP POLICY ----------------
-
-bool CompressionOrchestrator::shouldDrop(float importance)
-{
-    // ultra-conservative drop
-    return importance < 0.10f;
 }
