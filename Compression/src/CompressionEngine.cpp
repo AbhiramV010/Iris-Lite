@@ -53,35 +53,41 @@ bool CompressionEngine::initialize(const Config& cfg)
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine READY (STABLE MODE)");
+    logInfo("CompressionEngine READY (ROBUST MODE)");
     return true;
 }
 
 // --------------------------------------------------
-// EVENT INPUT (CRITICAL FIX)
+// EVENT INPUT (ROBUST + NO SILENT LOSS)
 // --------------------------------------------------
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
-    // Always log input (debug visibility)
-    logInfo("EVENT IN | " + event.trigger);
+    std::string trigger = event.trigger;
 
-    // Cluster still exists, but we NEVER allow deadlock
+    // FIX: never allow empty/unknown labels
+    if (trigger.empty() || trigger == "unknown")
+        trigger = "motion_event";
+
+    logInfo("EVENT IN | " + trigger);
+
     cluster.add(event);
 
     auto events = cluster.flush();
 
-    // SAFETY: if cluster returns empty, force single event
     if (events.empty())
-    {
         events.push_back(event);
-    }
 
     {
         std::lock_guard<std::mutex> lock(mtx);
 
-        for (const auto& e : events)
+        for (auto& e : events)
+        {
+            if (e.trigger.empty() || e.trigger == "unknown")
+                e.trigger = trigger;
+
             queue.push(e);
+        }
     }
 
     cv.notify_one();
@@ -138,7 +144,7 @@ void CompressionEngine::workerLoop()
 }
 
 // --------------------------------------------------
-// CORE PIPELINE
+// CORE PIPELINE (STABLE + SAFE)
 // --------------------------------------------------
 
 void CompressionEngine::processEvent(const EventWindow& event)
@@ -155,17 +161,22 @@ void CompressionEngine::processEvent(const EventWindow& event)
 
     const int head = static_cast<int>(headTail[0]);
 
-    std::string path =
-        storage->buildPath(event.startFrame, event.endFrame, event.trigger);
+    std::string trigger = event.trigger;
+    if (trigger.empty() || trigger == "unknown")
+        trigger = "motion_event";
 
-    logInfo("EVENT START | " + event.trigger);
+    std::string path =
+        storage->buildPath(event.startFrame, event.endFrame, trigger);
+
+    logInfo("EVENT START | " + trigger);
 
     cv::Mat prevFrame;
     bool opened = false;
 
     auto tick = std::chrono::steady_clock::now();
 
-    const int range = static_cast<int>(event.endFrame - event.startFrame);
+    int range = static_cast<int>(event.endFrame - event.startFrame);
+    range = std::max(1, range);
 
     for (int i = 0; i < range && !stop; ++i)
     {
@@ -175,9 +186,12 @@ void CompressionEngine::processEvent(const EventWindow& event)
         if (index < 0)
             index += FRAME_BUFFER_SIZE;
 
+        if (index < 0 || index >= FRAME_BUFFER_SIZE)
+            continue;
+
         uint32_t size = sizes[index];
 
-        if (size == 0 || size > SLOT_SIZE)
+        if (size == 0 || size > SLOT_SIZE || size > 5 * 1024 * 1024)
             continue;
 
         uint8_t* jpegPtr = bufferBase + (index * SLOT_SIZE);
@@ -195,11 +209,11 @@ void CompressionEngine::processEvent(const EventWindow& event)
             prevFrame,
             event.startFrame + i,
             (event.startFrame + event.endFrame) >> 1,
-            event.trigger
+            trigger
         );
 
-        // IMPORTANT FIX: only soft-drop, never full silence
-        if (decision.dropFrame && decision.importance < 0.15f)
+        // SAFE DROP: never allow full silence
+        if (decision.dropFrame && decision.importance < 0.12f)
         {
             prevFrame = safeFrame;
             continue;
