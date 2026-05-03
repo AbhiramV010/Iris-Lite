@@ -52,6 +52,8 @@ if __name__ == "__main__":
             if frame.shape[0] != H or frame.shape[1] != W:
                 frame = cv2.resize(frame, (W, H))
 
+            frame = np.ascontiguousarray(frame, dtype=np.uint8)
+
             current_zone = frame[P_Y:P_Y+P_H, P_X:P_X+P_W].copy()
 
             if prev_zone is not None:

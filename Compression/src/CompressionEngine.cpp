@@ -5,11 +5,8 @@
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
-#include <algorithm>
 
-// --------------------------------------------------
-// INIT
-// --------------------------------------------------
+// ---------------- INIT ----------------
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -53,69 +50,31 @@ bool CompressionEngine::initialize(const Config& cfg)
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine READY (ROBUST MODE)");
+    logInfo("CompressionEngine READY (STABLE SINGLE-FRAME MODE)");
     return true;
 }
 
-// --------------------------------------------------
-// EVENT INPUT (ROBUST + NO SILENT LOSS)
-// --------------------------------------------------
+// ---------------- EVENT QUEUE ----------------
 
 void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
-    std::string trigger = event.trigger;
-
-    // FIX: never allow empty/unknown labels
-    if (trigger.empty() || trigger == "unknown")
-        trigger = "motion_event";
-
-    logInfo("EVENT IN | " + trigger);
+    logInfo("EVENT IN | " + event.trigger);
 
     cluster.add(event);
-
     auto events = cluster.flush();
 
     if (events.empty())
         events.push_back(event);
 
-    {
-        std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(mtx);
 
-        for (auto& e : events)
-        {
-            if (e.trigger.empty() || e.trigger == "unknown")
-                e.trigger = trigger;
-
-            queue.push(e);
-        }
-    }
+    for (const auto& e : events)
+        queue.push(e);
 
     cv.notify_one();
-
-    logInfo("QUEUE PUSHED | size=" + std::to_string(queue.size()));
 }
 
-// --------------------------------------------------
-// SHUTDOWN
-// --------------------------------------------------
-
-void CompressionEngine::shutdown()
-{
-    stop = true;
-    cv.notify_all();
-
-    if (worker.joinable())
-        worker.join();
-
-    if (encoder && encoder->isOpen())
-        encoder->close();
-
-    logInfo("Shutdown complete");
-}
-
-// --------------------------------------------------
-// WORKER THREAD
-// --------------------------------------------------
+// ---------------- WORKER ----------------
 
 void CompressionEngine::workerLoop()
 {
@@ -143,60 +102,34 @@ void CompressionEngine::workerLoop()
     }
 }
 
-// --------------------------------------------------
-// CORE PIPELINE (STABLE + SAFE)
-// --------------------------------------------------
+// ---------------- CORE PIPELINE ----------------
 
 void CompressionEngine::processEvent(const EventWindow& event)
 {
     uint8_t* bufferBase = buffer->getFrameBufferBase();
-    uint32_t* sizes = buffer->getFrameSizes();
-    uint64_t* headTail = buffer->getHeadTail();
 
-    if (!bufferBase || !sizes || !headTail)
+    if (!bufferBase)
     {
-        logError("Invalid SHM pointers");
+        logError("Invalid SHM buffer");
         return;
     }
 
-    const int head = static_cast<int>(headTail[0]);
-
-    std::string trigger = event.trigger;
-    if (trigger.empty() || trigger == "unknown")
-        trigger = "motion_event";
-
     std::string path =
-        storage->buildPath(event.startFrame, event.endFrame, trigger);
+        storage->buildPath(event.startFrame, event.endFrame, event.trigger);
 
-    logInfo("EVENT START | " + trigger);
+    logInfo("EVENT START | " + event.trigger);
 
     cv::Mat prevFrame;
     bool opened = false;
 
     auto tick = std::chrono::steady_clock::now();
 
-    int range = static_cast<int>(event.endFrame - event.startFrame);
-    range = std::max(1, range);
-
-    for (int i = 0; i < range && !stop; ++i)
+    for (int i = 0; i < (event.endFrame - event.startFrame) && !stop; ++i)
     {
         tick += std::chrono::microseconds(1000000 / config.fps);
 
-        int index = (head - (range - i)) % FRAME_BUFFER_SIZE;
-        if (index < 0)
-            index += FRAME_BUFFER_SIZE;
-
-        if (index < 0 || index >= FRAME_BUFFER_SIZE)
-            continue;
-
-        uint32_t size = sizes[index];
-
-        if (size == 0 || size > SLOT_SIZE || size > 5 * 1024 * 1024)
-            continue;
-
-        uint8_t* jpegPtr = bufferBase + (index * SLOT_SIZE);
-
-        cv::Mat raw(1, size, CV_8UC1, jpegPtr);
+        // SAFE SINGLE FRAME READ
+        cv::Mat raw(1, SHM_SIZE, CV_8UC1, bufferBase);
         cv::Mat frame = cv::imdecode(raw, cv::IMREAD_COLOR);
 
         if (frame.empty())
@@ -209,11 +142,10 @@ void CompressionEngine::processEvent(const EventWindow& event)
             prevFrame,
             event.startFrame + i,
             (event.startFrame + event.endFrame) >> 1,
-            trigger
+            event.trigger
         );
 
-        // SAFE DROP: never allow full silence
-        if (decision.dropFrame && decision.importance < 0.12f)
+        if (decision.dropFrame && decision.importance < 0.15f)
         {
             prevFrame = safeFrame;
             continue;
@@ -223,7 +155,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
         {
             if (!encoder->open(path, decision.crf))
             {
-                logError("Encoder failed to open");
+                logError("Encoder failed");
                 return;
             }
             opened = true;

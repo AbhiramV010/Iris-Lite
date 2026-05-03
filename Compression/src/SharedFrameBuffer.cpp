@@ -5,9 +5,9 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cstring>
 #include <chrono>
 #include <thread>
-#include <cstring>
 
 static constexpr const char* SHM_NAME = "/iris_live_frame";
 
@@ -29,28 +29,24 @@ bool SharedFrameBuffer::mapMemory()
     {
         if (++tries > 200)
         {
-            logError("Frame SHM timeout (Python writer not running)");
+            logError("SHM timeout");
             return false;
         }
-
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    size_t size =
-        FRAME_WIDTH * FRAME_HEIGHT * FRAME_CHANNELS;
-
-    frame_buffer = static_cast<uint8_t*>(mmap(
+    frame_buffer = (uint8_t*)mmap(
         nullptr,
-        size,
+        SHM_SIZE,
         PROT_READ,
         MAP_SHARED,
         fd,
         0
-    ));
+    );
 
     if (frame_buffer == MAP_FAILED)
     {
-        logError(std::string("mmap failed: ") + std::strerror(errno));
+        logError("mmap failed (frame_buffer)");
         return false;
     }
 
