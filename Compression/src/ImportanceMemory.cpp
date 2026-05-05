@@ -9,9 +9,12 @@ void ImportanceMemory::update(const std::string& trigger, float score, bool wasU
 
     float error = target - score;
 
-    bias += 0.05f * error;
+    // adaptive learning rate
+    float lr = wasUseful ? 0.08f : 0.04f;
 
-    bias = std::clamp(bias, -0.5f, 0.5f);
+    bias += lr * error;
+
+    bias = std::clamp(bias, -0.6f, 0.6f);
 }
 
 float ImportanceMemory::getBias(const std::string& trigger) const

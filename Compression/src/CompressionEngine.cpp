@@ -5,6 +5,7 @@
 #include <opencv2/opencv.hpp>
 #include <chrono>
 #include <thread>
+#include <algorithm>
 
 // ---------------- INIT ----------------
 
@@ -15,6 +16,7 @@ bool CompressionEngine::initialize(const Config& cfg)
     buffer = std::make_unique<SharedFrameBuffer>();
     governor = std::make_unique<SystemGovernor>();
     storage = std::make_unique<StorageManager>();
+    policy = std::make_unique<CompressionPolicy>();
 
     encoder = std::make_unique<H264Encoder>(
         config.encodeWidth,
@@ -28,8 +30,6 @@ bool CompressionEngine::initialize(const Config& cfg)
         config.perceptualHeight,
         config
     );
-
-    policy = std::make_unique<CompressionPolicy>();
 
     orchestrator = std::make_unique<CompressionOrchestrator>(
         config,
@@ -50,7 +50,7 @@ bool CompressionEngine::initialize(const Config& cfg)
     stop = false;
     worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine READY (STABLE SINGLE-FRAME MODE)");
+    logInfo("CompressionEngine READY (PELICAN + Stable CRF + Temporal Smoothing)");
     return true;
 }
 
@@ -106,54 +106,89 @@ void CompressionEngine::workerLoop()
 
 void CompressionEngine::processEvent(const EventWindow& event)
 {
-    uint8_t* bufferBase = buffer->getFrameBufferBase();
-
-    if (!bufferBase)
-    {
-        logError("Invalid SHM buffer");
-        return;
-    }
-
     std::string path =
         storage->buildPath(event.startFrame, event.endFrame, event.trigger);
 
     logInfo("EVENT START | " + event.trigger);
 
-    cv::Mat prevFrame;
     bool opened = false;
+    cv::Mat prevFrame;
 
-    auto tick = std::chrono::steady_clock::now();
+    const uint64_t start = event.startFrame;
+    const uint64_t end = event.endFrame;
 
-    for (int i = 0; i < (event.endFrame - event.startFrame) && !stop; ++i)
+    // ---------------- STABILITY STATE ----------------
+    float smoothedImportance = 0.0f;
+    float smoothedCRF = 28.0f;
+
+    constexpr float IMPORTANCE_ALPHA = 0.15f;
+    constexpr float CRF_ALPHA = 0.10f;
+
+    for (uint64_t i = start; i <= end && !stop; ++i)
     {
-        tick += std::chrono::microseconds(1000000 / config.fps);
+        uint64_t safeIndex = i % FRAME_BUFFER_SIZE;
 
-        // SAFE SINGLE FRAME READ
-        cv::Mat raw(1, SHM_SIZE, CV_8UC1, bufferBase);
-        cv::Mat frame = cv::imdecode(raw, cv::IMREAD_COLOR);
+        std::vector<uint8_t> jpeg;
+        uint32_t size = 0;
 
+        if (!buffer->getFrame(safeIndex, jpeg, size))
+            continue;
+
+        cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
         if (frame.empty())
             continue;
 
         cv::Mat safeFrame = frame.clone();
 
+        // ---------------- P.E.L.I.C.A.N DECISION ----------------
         auto decision = orchestrator->compute(
             safeFrame,
             prevFrame,
-            event.startFrame + i,
-            (event.startFrame + event.endFrame) >> 1,
+            i,
+            (start + end) / 2,
             event.trigger
         );
 
-        if (decision.dropFrame && decision.importance < 0.15f)
+        float pressure = governor->computePressure();
+
+        // ---------------- TEMPORAL SALIENCY SMOOTHING ----------------
+        float rawImportance =
+            decision.importance * 0.6f +
+            decision.faceBoost * 0.3f +
+            (pressure * 0.1f);
+
+        smoothedImportance =
+            IMPORTANCE_ALPHA * rawImportance +
+            (1.0f - IMPORTANCE_ALPHA) * smoothedImportance;
+
+        // ---------------- DROP LOGIC (STABILIZED) ----------------
+        bool shouldDrop =
+            decision.dropFrame && smoothedImportance < 0.18f;
+
+        if (shouldDrop || policy->shouldSkipFrame(smoothedImportance, pressure))
         {
             prevFrame = safeFrame;
             continue;
         }
 
+        // ---------------- CRF STABILIZATION (EVENT-WEIGHTED CURVE) ----------------
+        float targetCRF =
+            policy->computeCRF(smoothedImportance);
+
+        // pressure pushes compression harder
+        targetCRF += pressure * 6.0f;
+
+        // clamp for stability
+        targetCRF = std::clamp(targetCRF, 18.0f, 38.0f);
+
+        smoothedCRF =
+            CRF_ALPHA * targetCRF +
+            (1.0f - CRF_ALPHA) * smoothedCRF;
+
+        // ---------------- ENCODER INIT ----------------
         if (!opened)
         {
-            if (!encoder->open(path, decision.crf))
+            if (!encoder->open(path, (int)smoothedCRF))
             {
                 logError("Encoder failed");
                 return;
@@ -161,17 +196,17 @@ void CompressionEngine::processEvent(const EventWindow& event)
             opened = true;
         }
 
+        // ---------------- WRITE FRAME ----------------
         encoder->writeFrame(safeFrame);
         prevFrame = safeFrame;
 
-        float pressure = governor->computePressure();
-
-        std::this_thread::sleep_until(
-            tick + std::chrono::microseconds((int)(pressure * 4000))
+        // ---------------- ADAPTIVE TIMING ----------------
+        std::this_thread::sleep_for(
+            std::chrono::microseconds((int)(pressure * 4000))
         );
     }
 
-    if (opened && encoder->isOpen())
+    if (opened)
         encoder->close();
 
     logInfo("EVENT END | saved=" + path);

@@ -1,5 +1,6 @@
 #include "CompressionOrchestrator.hpp"
 #include <algorithm>
+#include <cmath>
 
 // ---------------- CONSTRUCTOR ----------------
 
@@ -42,23 +43,40 @@ CompressionOrchestrator::Decision CompressionOrchestrator::compute(
     // ---------------- PRESSURE ----------------
     float pressure = governor ? governor->computePressure() : 0.0f;
 
-    // ---------------- DROP (WITH TEMPORAL PROTECTION) ----------------
+    // ---------------- TEMPORAL CONTINUITY ----------------
     static float lastImportance = 0.0f;
+    static int continuityFrames = 0;
 
+    bool highImportance = d.importance > 0.6f;
+    bool mediumImportance = d.importance > 0.3f;
+
+    if (highImportance)
+        continuityFrames = 6; // protect next ~6 frames
+    else if (continuityFrames > 0)
+        continuityFrames--;
+
+    // ---------------- DROP LOGIC (SMART, NOT AGGRESSIVE) ----------------
     bool baseDrop = policy->shouldSkipFrame(d.importance, pressure);
 
-    // Protect continuity after important frames
     bool protect =
-        (lastImportance > 0.6f) && (d.importance > 0.2f);
+        (continuityFrames > 0) ||                     // after important frame
+        (lastImportance > 0.5f && mediumImportance);  // smooth transitions
 
     d.dropFrame = baseDrop && !protect;
 
     lastImportance = d.importance;
 
-    // ---------------- QUALITY ----------------
-    d.crf = policy->computeCRF(d.importance);
+    // ---------------- QUALITY (PRESSURE-AWARE) ----------------
+    float crfBase = policy->computeCRF(d.importance);
 
-    // informational only
+    // degrade slightly under pressure instead of dropping frames
+    d.crf = std::clamp(
+        crfBase + (pressure * 6.0f),
+        18.0f,
+        40.0f
+    );
+
+    // ---------------- FPS ADAPTATION ----------------
     d.fps = policy->computeFPS(d.importance);
 
     return d;
@@ -70,6 +88,8 @@ float CompressionOrchestrator::fuse(
     float engineScore,
     float memoryBias)
 {
-    float s = engineScore + memoryBias;
-    return std::clamp(s, 0.0f, 1.0f);
+    // non-linear fusion (memory matters more at mid-level importance)
+    float fused = engineScore + (memoryBias * (0.5f + engineScore));
+
+    return std::clamp(fused, 0.0f, 1.0f);
 }

@@ -1,15 +1,13 @@
 #include "SharedFrameBuffer.hpp"
-#include "SharedMemoryConfig.hpp"
 #include "logging.hpp"
 
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <cstring>
-#include <chrono>
 #include <thread>
+#include <chrono>
 
-static constexpr const char* SHM_NAME = "/iris_live_frame";
+static constexpr const char* SHM_NAME = "/iris_frame_buffer_data";
 
 bool SharedFrameBuffer::initialize()
 {
@@ -18,7 +16,7 @@ bool SharedFrameBuffer::initialize()
 
 bool SharedFrameBuffer::isValid() const
 {
-    return frame_buffer && frame_buffer != MAP_FAILED;
+    return buffer && buffer != MAP_FAILED;
 }
 
 bool SharedFrameBuffer::mapMemory()
@@ -35,26 +33,26 @@ bool SharedFrameBuffer::mapMemory()
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    frame_buffer = (uint8_t*)mmap(
+    buffer = (FrameSlot*)mmap(
         nullptr,
-        SHM_SIZE,
+        sizeof(FrameSlot) * BUFFER_SIZE,
         PROT_READ,
         MAP_SHARED,
         fd,
         0
     );
 
-    if (frame_buffer == MAP_FAILED)
+    if (buffer == MAP_FAILED)
     {
-        logError("mmap failed (frame_buffer)");
+        logError("mmap failed (FrameSlot buffer)");
         return false;
     }
 
-    logInfo("SharedFrameBuffer mapped (SINGLE FRAME MODE)");
+    logInfo("SharedFrameBuffer mapped (RING BUFFER MODE)");
     return true;
 }
 
-uint8_t* SharedFrameBuffer::getFrameBufferBase()
+const FrameSlot* SharedFrameBuffer::getSlot(uint64_t index) const
 {
-    return frame_buffer;
+    return &buffer[index % BUFFER_SIZE];
 }
