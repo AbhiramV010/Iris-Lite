@@ -142,7 +142,8 @@ Iris_Lite runs as **six parallel processes**, coordinated through POSIX shared m
 
 **listener.py** samples audio at 16kHz, builds mel spectrograms on-device, and runs inference with the bundled TFLite model. It classifies 7 sound categories — screaming, gunshots, glass breaking, aggressive knocking, car screech, dog barking, and ambience — and triggers a capture on any concerning detection.
 - The initial H5 file was too large to commit to github, so we compressed it into a TFLite (for storage & Pi purposes) and put that on the repository
-- The Deep Learning model was created by us, and it was NOT a pre-trained or pre-created model
+- The Deep Learning sound model was created by Abhiram V, and it was NOT a pre-trained model (not YAMNet or anything from the Internet)
+             - Training data from Freesound
 
 **zone_monitor.py** uses GSOC background subtraction and HSV-based grass segmentation to detect when a foreground object overlaps a defined ground zone, triggering a capture after 2+ seconds of sustained overlap.
 
