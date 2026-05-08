@@ -80,10 +80,12 @@ void CompressionEngine::enqueueEvent(
     if (events.empty())
         events.push_back(event);
 
-    std::lock_guard<std::mutex> lock(mtx);
+    {
+        std::lock_guard<std::mutex> lock(mtx);
 
-    for (const auto& e : events)
-        queue.push(e);
+        for (const auto& e : events)
+            queue.push(e);
+    }
 
     cv.notify_one();
 }
@@ -150,15 +152,20 @@ void CompressionEngine::processEvent(
         // --------------------------------------------------
 
         const uint64_t index =
-            i % FRAME_BUFFER_SIZE;
+            i % BUFFER_SIZE;
 
-        std::vector<uint8_t> jpeg;
-        uint32_t size = 0;
+        const FrameSlot* slot =
+            buffer->getSlot(index);
 
-        if (!buffer->getFrame(index, jpeg, size))
+        if (!slot || slot->size == 0)
         {
             continue;
         }
+
+        std::vector<uint8_t> jpeg(
+            slot->data,
+            slot->data + slot->size
+        );
 
         cv::Mat frame =
             cv::imdecode(
@@ -194,7 +201,7 @@ void CompressionEngine::processEvent(
         float fusedImportance =
             policy->fuseImportance(
                 decision.importance,
-                decision.faceBoost,
+                1.0f,
                 pressure
             );
 
@@ -223,16 +230,11 @@ void CompressionEngine::processEvent(
         // --------------------------------------------------
 
         encoder->setQuality(
-            (int)decision.crf
+            decision.crf
         );
 
-        // perceptual weighting
         encoder->setRegionImportance(
             fusedImportance
-        );
-
-        encoder->setFaceImportance(
-            decision.faceBoost
         );
 
         // --------------------------------------------------
@@ -278,4 +280,23 @@ void CompressionEngine::processEvent(
         encoder->close();
 
     logInfo("EVENT END | saved=" + path);
+}
+
+// --------------------------------------------------
+// SHUTDOWN
+// --------------------------------------------------
+
+void CompressionEngine::shutdown()
+{
+    stop = true;
+
+    cv.notify_all();
+
+    if (worker.joinable())
+        worker.join();
+
+    if (encoder && encoder->isOpen())
+        encoder->close();
+
+    logInfo("CompressionEngine shutdown complete");
 }
