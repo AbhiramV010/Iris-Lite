@@ -6,7 +6,9 @@
 #include <chrono>
 #include <thread>
 
-// ---------------- INIT ----------------
+// --------------------------------------------------
+// INIT
+// --------------------------------------------------
 
 bool CompressionEngine::initialize(const Config& cfg)
 {
@@ -47,19 +49,32 @@ bool CompressionEngine::initialize(const Config& cfg)
     storage->ensureReady();
 
     stop = false;
-    worker = std::thread(&CompressionEngine::workerLoop, this);
 
-    logInfo("CompressionEngine READY (STRICT RING BUFFER MODE)");
+    worker =
+        std::thread(
+            &CompressionEngine::workerLoop,
+            this
+        );
+
+    logInfo(
+        "CompressionEngine READY "
+        "(STRICT RING BUFFER MODE)"
+    );
+
     return true;
 }
 
-// ---------------- EVENT QUEUE ----------------
+// --------------------------------------------------
+// EVENT QUEUE
+// --------------------------------------------------
 
-void CompressionEngine::enqueueEvent(const EventWindow& event)
+void CompressionEngine::enqueueEvent(
+    const EventWindow& event)
 {
     logInfo("EVENT IN | " + event.trigger);
 
     cluster.add(event);
+
     auto events = cluster.flush();
 
     if (events.empty())
@@ -73,7 +88,9 @@ void CompressionEngine::enqueueEvent(const EventWindow& event)
     cv.notify_one();
 }
 
-// ---------------- WORKER ----------------
+// --------------------------------------------------
+// WORKER LOOP
+// --------------------------------------------------
 
 void CompressionEngine::workerLoop()
 {
@@ -88,7 +105,7 @@ void CompressionEngine::workerLoop()
 
             cv.wait(lock, [&] {
                 return stop || !queue.empty();
-                });
+            });
 
             if (stop && queue.empty())
                 break;
@@ -101,53 +118,78 @@ void CompressionEngine::workerLoop()
     }
 }
 
-// ---------------- CORE PIPELINE ----------------
+// --------------------------------------------------
+// MAIN PIPELINE
+// --------------------------------------------------
 
-void CompressionEngine::processEvent(const EventWindow& event)
+void CompressionEngine::processEvent(
+    const EventWindow& event)
 {
     std::string path =
-        storage->buildPath(event.startFrame, event.endFrame, event.trigger);
+        storage->buildPath(
+            event.startFrame,
+            event.endFrame,
+            event.trigger
+        );
 
     logInfo("EVENT START | " + event.trigger);
 
     bool encoderOpened = false;
+
     cv::Mat prevFrame;
 
     const uint64_t start = event.startFrame;
     const uint64_t end = event.endFrame;
 
-    for (uint64_t i = start; i <= end && !stop; ++i)
+    for (uint64_t i = start;
+         i <= end && !stop;
+         ++i)
     {
-        // ---------------- STRICT SHM RING BUFFER ACCESS ----------------
-        const uint64_t index = i % FRAME_BUFFER_SIZE;
+        // --------------------------------------------------
+        // STRICT SHM RING BUFFER ACCESS
+        // --------------------------------------------------
+
+        const uint64_t index =
+            i % FRAME_BUFFER_SIZE;
 
         std::vector<uint8_t> jpeg;
         uint32_t size = 0;
 
         if (!buffer->getFrame(index, jpeg, size))
         {
-            // IMPORTANT: do NOT break timeline (report-consistent behavior)
             continue;
         }
 
-        cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+        cv::Mat frame =
+            cv::imdecode(
+                jpeg,
+                cv::IMREAD_COLOR
+            );
 
         if (frame.empty())
             continue;
 
         cv::Mat safeFrame = frame.clone();
 
-        // ---------------- SYSTEM STATE ----------------
-        float pressure = governor->computePressure();
+        // --------------------------------------------------
+        // SYSTEM PRESSURE
+        // --------------------------------------------------
 
-        // ---------------- INTELLIGENCE DECISION ----------------
-        auto decision = orchestrator->compute(
-            safeFrame,
-            prevFrame,
-            i,
-            (start + end) / 2,
-            event.trigger
-        );
+        float pressure =
+            governor->computePressure();
+
+        // --------------------------------------------------
+        // ORCHESTRATOR DECISION
+        // --------------------------------------------------
+
+        auto decision =
+            orchestrator->compute(
+                safeFrame,
+                prevFrame,
+                i,
+                (start + end) / 2,
+                event.trigger
+            );
 
         float fusedImportance =
             policy->fuseImportance(
@@ -156,12 +198,18 @@ void CompressionEngine::processEvent(const EventWindow& event)
                 pressure
             );
 
-        // ---------------- ENCODER INITIALIZATION ----------------
+        // --------------------------------------------------
+        // OPEN ENCODER
+        // --------------------------------------------------
+
         if (!encoderOpened)
         {
-            int crf = policy->computeCRF(fusedImportance);
+            int initialCRF =
+                policy->computeCRF(
+                    fusedImportance
+                );
 
-            if (!encoder->open(path, crf))
+            if (!encoder->open(path, initialCRF))
             {
                 logError("Encoder failed");
                 return;
@@ -170,21 +218,61 @@ void CompressionEngine::processEvent(const EventWindow& event)
             encoderOpened = true;
         }
 
-        // ---------------- ADAPTIVE QUALITY CONTROL ----------------
+        // --------------------------------------------------
+        // ADAPTIVE QUALITY
+        // --------------------------------------------------
+
         encoder->setQuality(
-            policy->computeCRF(fusedImportance)
+            (int)decision.crf
         );
 
-        // ---------------- WRITE FRAME (NO DROPPING POLICY) ----------------
+        // perceptual weighting
+        encoder->setRegionImportance(
+            fusedImportance
+        );
+
+        encoder->setFaceImportance(
+            decision.faceBoost
+        );
+
+        // --------------------------------------------------
+        // SMART FRAME DROPPING
+        // --------------------------------------------------
+
+        bool shouldDrop =
+            decision.dropFrame &&
+            pressure > 0.92f &&
+            fusedImportance < 0.25f;
+
+        // preserve continuity
+        if (shouldDrop)
+        {
+            prevFrame = safeFrame;
+            continue;
+        }
+
+        // --------------------------------------------------
+        // ENCODE FRAME
+        // --------------------------------------------------
+
         encoder->writeFrame(safeFrame);
 
         prevFrame = safeFrame;
 
-        // ---------------- TIMING CONTROL ----------------
+        // --------------------------------------------------
+        // TIMING CONTROL
+        // --------------------------------------------------
+
         std::this_thread::sleep_for(
-            std::chrono::microseconds(1000000 / config.fps)
+            std::chrono::microseconds(
+                1000000 / config.fps
+            )
         );
     }
+
+    // --------------------------------------------------
+    // CLEANUP
+    // --------------------------------------------------
 
     if (encoderOpened)
         encoder->close();
