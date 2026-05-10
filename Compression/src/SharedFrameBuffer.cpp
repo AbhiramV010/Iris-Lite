@@ -142,3 +142,7 @@ uint32_t SharedFrameBuffer::getFrameSize(
 
     return size;
 }
+const uint64_t* SharedFrameBuffer::getHeadTail() const
+{
+    return headTail;
+}

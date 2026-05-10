@@ -14,6 +14,8 @@ public:
     const uint8_t* getFrameData(uint64_t index) const;
     uint32_t getFrameSize(uint64_t index) const;
 
+    const uint64_t* getHeadTail() const;
+
 private:
     bool mapMemory();
 
