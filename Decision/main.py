@@ -46,6 +46,7 @@ if __name__ == "__main__":
     try: shm = shared_memory.SharedMemory(name=SHM_NAME)
     except FileNotFoundError: shm = shared_memory.SharedMemory(name=SHM_NAME, create=True, size=1920 * 1080 * 3)
 
+    time.sleep(1)
     stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
 
     shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", CONCERN_SHM, SHM_NAME_INDICE]
