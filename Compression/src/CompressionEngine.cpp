@@ -50,11 +50,10 @@ bool CompressionEngine::initialize(const Config& cfg)
 
     stop = false;
 
-    worker =
-        std::thread(
-            &CompressionEngine::workerLoop,
-            this
-        );
+    worker = std::thread(
+        &CompressionEngine::workerLoop,
+        this
+    );
 
     logInfo(
         "CompressionEngine READY "
@@ -71,7 +70,14 @@ bool CompressionEngine::initialize(const Config& cfg)
 void CompressionEngine::enqueueEvent(
     const EventWindow& event)
 {
-    logInfo("EVENT IN | " + event.trigger);
+    logInfo(
+        "EVENT IN | trigger=" +
+        event.trigger +
+        " start=" +
+        std::to_string(event.startFrame) +
+        " end=" +
+        std::to_string(event.endFrame)
+    );
 
     cluster.add(event);
 
@@ -84,7 +90,24 @@ void CompressionEngine::enqueueEvent(
         std::lock_guard<std::mutex> lock(mtx);
 
         for (const auto& e : events)
+        {
             queue.push(e);
+
+            logInfo(
+                "QUEUED EVENT | " +
+                e.trigger +
+                " [" +
+                std::to_string(e.startFrame) +
+                " -> " +
+                std::to_string(e.endFrame) +
+                "]"
+            );
+        }
+
+        logInfo(
+            "QUEUE SIZE = " +
+            std::to_string(queue.size())
+        );
     }
 
     cv.notify_one();
@@ -105,15 +128,21 @@ void CompressionEngine::workerLoop()
         {
             std::unique_lock<std::mutex> lock(mtx);
 
-            cv.wait(lock, [&] {
-                return stop || !queue.empty();
-            });
+            cv.wait(lock, [&]
+                {
+                    return stop || !queue.empty();
+                });
 
             if (stop && queue.empty())
                 break;
 
             event = queue.front();
             queue.pop();
+
+            logInfo(
+                "DEQUEUED EVENT | remaining=" +
+                std::to_string(queue.size())
+            );
         }
 
         processEvent(event);
@@ -134,7 +163,14 @@ void CompressionEngine::processEvent(
             event.trigger
         );
 
-    logInfo("EVENT START | " + event.trigger);
+    logInfo(
+        "EVENT START | " +
+        event.trigger +
+        " | frames " +
+        std::to_string(event.startFrame) +
+        " -> " +
+        std::to_string(event.endFrame)
+    );
 
     bool encoderOpened = false;
 
@@ -143,27 +179,65 @@ void CompressionEngine::processEvent(
     const uint64_t start = event.startFrame;
     const uint64_t end = event.endFrame;
 
-    for (uint64_t i = start;
-         i <= end && !stop;
-         ++i)
-    {
-        // --------------------------------------------------
-        // STRICT SHM RING BUFFER ACCESS
-        // --------------------------------------------------
+    int encodedFrames = 0;
+    int droppedFrames = 0;
+    int failedFrames = 0;
 
+    for (uint64_t i = start;
+        i <= end && !stop;
+        ++i)
+    {
         const uint64_t index =
             i % BUFFER_SIZE;
+
+        logInfo(
+            "READ FRAME INDEX = " +
+            std::to_string(index)
+        );
 
         uint32_t frameSize =
             buffer->getFrameSize(index);
 
         if (frameSize == 0)
         {
+            failedFrames++;
+
+            logError(
+                "EMPTY FRAME SIZE | index=" +
+                std::to_string(index)
+            );
+
+            continue;
+        }
+
+        if (frameSize > SLOT_SIZE)
+        {
+            failedFrames++;
+
+            logError(
+                "INVALID FRAME SIZE | index=" +
+                std::to_string(index) +
+                " size=" +
+                std::to_string(frameSize)
+            );
+
             continue;
         }
 
         const uint8_t* frameData =
             buffer->getFrameData(index);
+
+        if (!frameData)
+        {
+            failedFrames++;
+
+            logError(
+                "NULL FRAME DATA | index=" +
+                std::to_string(index)
+            );
+
+            continue;
+        }
 
         std::vector<uint8_t> jpeg(
             frameData,
@@ -177,20 +251,21 @@ void CompressionEngine::processEvent(
             );
 
         if (frame.empty())
+        {
+            failedFrames++;
+
+            logError(
+                "FRAME DECODE FAILED | index=" +
+                std::to_string(index)
+            );
+
             continue;
+        }
 
         cv::Mat safeFrame = frame.clone();
 
-        // --------------------------------------------------
-        // SYSTEM PRESSURE
-        // --------------------------------------------------
-
         float pressure =
             governor->computePressure();
-
-        // --------------------------------------------------
-        // ORCHESTRATOR DECISION
-        // --------------------------------------------------
 
         auto decision =
             orchestrator->compute(
@@ -219,9 +294,14 @@ void CompressionEngine::processEvent(
                     fusedImportance
                 );
 
+            logInfo(
+                "OPENING ENCODER | path=" +
+                path
+            );
+
             if (!encoder->open(path, initialCRF))
             {
-                logError("Encoder failed");
+                logError("Encoder failed to open");
                 return;
             }
 
@@ -249,9 +329,15 @@ void CompressionEngine::processEvent(
             pressure > 0.96f &&
             fusedImportance < 0.25f;
 
-        // preserve continuity
         if (shouldDrop)
         {
+            droppedFrames++;
+
+            logInfo(
+                "FRAME DROPPED | index=" +
+                std::to_string(index)
+            );
+
             prevFrame = safeFrame;
             continue;
         }
@@ -260,13 +346,24 @@ void CompressionEngine::processEvent(
         // ENCODE FRAME
         // --------------------------------------------------
 
-        encoder->writeFrame(safeFrame);
+        bool success =
+            encoder->writeFrame(safeFrame);
+
+        if (!success)
+        {
+            failedFrames++;
+
+            logError(
+                "ENCODE FAILED | index=" +
+                std::to_string(index)
+            );
+
+            continue;
+        }
+
+        encodedFrames++;
 
         prevFrame = safeFrame;
-
-        // --------------------------------------------------
-        // TIMING CONTROL
-        // --------------------------------------------------
 
         std::this_thread::sleep_for(
             std::chrono::microseconds(
@@ -280,9 +377,17 @@ void CompressionEngine::processEvent(
     // --------------------------------------------------
 
     if (encoderOpened)
+    {
+        logInfo("Closing encoder");
         encoder->close();
+    }
 
-    logInfo("EVENT END | saved=" + path);
+    logInfo(
+        "EVENT END | saved=" + path +
+        " encoded=" + std::to_string(encodedFrames) +
+        " dropped=" + std::to_string(droppedFrames) +
+        " failed=" + std::to_string(failedFrames)
+    );
 }
 
 // --------------------------------------------------
