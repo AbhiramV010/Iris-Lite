@@ -154,17 +154,20 @@ void CompressionEngine::processEvent(
         const uint64_t index =
             i % BUFFER_SIZE;
 
-        const FrameSlot* slot =
-            buffer->getSlot(index);
+        uint32_t frameSize =
+            buffer->getFrameSize(index);
 
-        if (!slot || slot->size == 0)
+        if (frameSize == 0)
         {
             continue;
         }
 
+        const uint8_t* frameData =
+            buffer->getFrameData(index);
+
         std::vector<uint8_t> jpeg(
-            slot->data,
-            slot->data + slot->size
+            frameData,
+            frameData + frameSize
         );
 
         cv::Mat frame =

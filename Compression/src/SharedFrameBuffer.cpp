@@ -4,10 +4,22 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+
 #include <thread>
 #include <chrono>
 
-static constexpr const char* SHM_NAME = "/iris_frame_buffer_data";
+static constexpr const char* FRAME_DATA_SHM =
+"/iris_frame_buffer_data";
+
+static constexpr const char* FRAME_SIZE_SHM =
+"/iris_frame_sizes";
+
+static constexpr const char* HEAD_TAIL_SHM =
+"/iris_frame_head_tail";
+
+// --------------------------------------------------
+// INIT
+// --------------------------------------------------
 
 bool SharedFrameBuffer::initialize()
 {
@@ -16,43 +28,117 @@ bool SharedFrameBuffer::initialize()
 
 bool SharedFrameBuffer::isValid() const
 {
-    return buffer && buffer != MAP_FAILED;
+    return frameBuffer &&
+        frameSizes &&
+        headTail &&
+        frameBuffer != MAP_FAILED &&
+        frameSizes != MAP_FAILED &&
+        headTail != MAP_FAILED;
 }
+
+// --------------------------------------------------
+// MAP MEMORY
+// --------------------------------------------------
 
 bool SharedFrameBuffer::mapMemory()
 {
     int tries = 0;
 
-    while ((fd = shm_open(SHM_NAME, O_RDONLY, 0666)) < 0)
+    while ((dataFd =
+        shm_open(FRAME_DATA_SHM, O_RDONLY, 0666)) < 0)
     {
         if (++tries > 200)
         {
-            logError("SHM timeout");
+            logError("Frame buffer SHM timeout");
             return false;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
     }
 
-    buffer = (FrameSlot*)mmap(
-        nullptr,
-        sizeof(FrameSlot) * BUFFER_SIZE,
-        PROT_READ,
-        MAP_SHARED,
-        fd,
-        0
-    );
+    sizeFd =
+        shm_open(FRAME_SIZE_SHM, O_RDONLY, 0666);
 
-    if (buffer == MAP_FAILED)
+    headTailFd =
+        shm_open(HEAD_TAIL_SHM, O_RDONLY, 0666);
+
+    if (sizeFd < 0 || headTailFd < 0)
     {
-        logError("mmap failed (FrameSlot buffer)");
+        logError("Failed to open SHM metadata");
         return false;
     }
 
-    logInfo("SharedFrameBuffer mapped (RING BUFFER MODE)");
+    // --------------------------------------------------
+    // MAP FRAME DATA
+    // --------------------------------------------------
+
+    frameBuffer = static_cast<uint8_t*>(mmap(
+        nullptr,
+        BUFFER_SIZE * SLOT_SIZE,
+        PROT_READ,
+        MAP_SHARED,
+        dataFd,
+        0
+    ));
+
+    // --------------------------------------------------
+    // MAP FRAME SIZES
+    // --------------------------------------------------
+
+    frameSizes = static_cast<uint32_t*>(mmap(
+        nullptr,
+        BUFFER_SIZE * sizeof(uint32_t),
+        PROT_READ,
+        MAP_SHARED,
+        sizeFd,
+        0
+    ));
+
+    // --------------------------------------------------
+    // MAP HEAD/TAIL
+    // --------------------------------------------------
+
+    headTail = static_cast<uint64_t*>(mmap(
+        nullptr,
+        sizeof(uint64_t) * 2,
+        PROT_READ,
+        MAP_SHARED,
+        headTailFd,
+        0
+    ));
+
+    if (!isValid())
+    {
+        logError("Shared memory mmap failed");
+        return false;
+    }
+
+    logInfo("SharedFrameBuffer mapped successfully");
+
     return true;
 }
 
-const FrameSlot* SharedFrameBuffer::getSlot(uint64_t index) const
+// --------------------------------------------------
+// ACCESSORS
+// --------------------------------------------------
+
+const uint8_t* SharedFrameBuffer::getFrameData(
+    uint64_t index) const
 {
-    return &buffer[index % BUFFER_SIZE];
+    return frameBuffer +
+        ((index % BUFFER_SIZE) * SLOT_SIZE);
+}
+
+uint32_t SharedFrameBuffer::getFrameSize(
+    uint64_t index) const
+{
+    uint32_t size =
+        frameSizes[index % BUFFER_SIZE];
+
+    // HARD SAFETY CHECK
+    if (size == 0 || size > SLOT_SIZE)
+        return 0;
+
+    return size;
 }
