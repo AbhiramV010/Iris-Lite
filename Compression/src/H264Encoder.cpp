@@ -6,19 +6,8 @@
 #include <opencv2/opencv.hpp>
 #include <algorithm>
 
-// ----------------------------------------------------
-// CONSTRUCTOR / DESTRUCTOR
-// ----------------------------------------------------
-
-H264Encoder::H264Encoder(
-    int w,
-    int h,
-    int fps_,
-    bool hw)
-    : width(w),
-      height(h),
-      fps(fps_),
-      useHardware(hw)
+H264Encoder::H264Encoder(int w, int h, int fps_, bool hw)
+    : width(w), height(h), fps(fps_), useHardware(hw)
 {
 }
 
@@ -27,218 +16,139 @@ H264Encoder::~H264Encoder()
     close();
 }
 
-// ----------------------------------------------------
-// BUILD FFMPEG COMMAND
-// ----------------------------------------------------
-
 std::string H264Encoder::buildCommand(
     const std::string& path,
-    int crf)
+    int crf,
+    bool hw)
 {
     std::ostringstream cmd;
 
-    cmd << "ffmpeg -y "
-        << "-loglevel error "
-        << "-f rawvideo "
-        << "-pix_fmt bgr24 "
+    cmd << "ffmpeg -y -loglevel error "
+        << "-f rawvideo -pix_fmt bgr24 "
         << "-s " << width << "x" << height << " "
-        << "-r " << fps << " "
-        << "-i - ";
+        << "-r " << fps << " -i - ";
 
-    if (useHardware)
+    if (hw)
     {
-        int bitrateKbps =
-            2000 - (crf - 18) * 80;
+        int bitrateKbps = 2000 - (crf - 18) * 80;
+        bitrateKbps = std::clamp(bitrateKbps, 500, 4000);
 
-        bitrateKbps =
-            std::clamp(
-                bitrateKbps,
-                500,
-                4000
-            );
-
-        cmd << "-c:v h264_v4l2m2m "
-            << "-b:v "
-            << bitrateKbps
-            << "k ";
+        cmd << "-c:v h264_v4l2m2m -b:v "
+            << bitrateKbps << "k ";
     }
     else
     {
-        cmd << "-c:v libx264 "
-            << "-preset veryfast "
-            << "-crf "
-            << crf
-            << " ";
+        cmd << "-c:v libx264 -preset veryfast -crf "
+            << crf << " ";
     }
 
-    cmd << "-pix_fmt yuv420p "
-        << path;
+    cmd << "-pix_fmt yuv420p " << path;
 
     return cmd.str();
 }
 
-// ----------------------------------------------------
-// OPEN
-// ----------------------------------------------------
+bool H264Encoder::testPipeAlive()
+{
+    return ffmpegPipe != nullptr;
+}
 
-bool H264Encoder::open(
-    const std::string& path,
-    int crf)
+bool H264Encoder::open(const std::string& path, int crf)
 {
     close();
 
-    std::string cmd =
-        buildCommand(path, crf);
+    currentPath = path;
 
-    ffmpegPipe =
-        popen(cmd.c_str(), "w");
+    // TRY HARDWARE FIRST
+    if (useHardware)
+    {
+        std::string cmd = buildCommand(path, crf, true);
+        ffmpegPipe = popen(cmd.c_str(), "w");
+
+        if (ffmpegPipe)
+        {
+            hwActive = true;
+            logInfo("Hardware encoder started");
+            logInfo(cmd);
+            return true;
+        }
+
+        logWarn("Hardware encoding failed → switching to software");
+    }
+
+    // FALLBACK SOFTWARE
+    std::string softCmd = buildCommand(path, crf, false);
+    ffmpegPipe = popen(softCmd.c_str(), "w");
 
     if (!ffmpegPipe)
     {
-        logError("FFmpeg failed to start");
+        logError("FFmpeg failed completely");
         return false;
     }
 
-    currentCRF = crf;
-    pendingCRF = crf;
+    hwActive = false;
 
-    logInfo("Encoder started: " + path);
-    logInfo("FFmpeg CMD: " + cmd);
+    logInfo("Software encoder started");
+    logInfo(softCmd);
 
     return true;
 }
 
-// ----------------------------------------------------
-// RUNTIME QUALITY CONTROL
-// ----------------------------------------------------
-
-void H264Encoder::setQuality(int crf)
-{
-    pendingCRF =
-        std::clamp(crf, 18, 40);
-
-    currentCRF = pendingCRF;
-}
-
-void H264Encoder::setRegionImportance(float value)
-{
-    regionImportance =
-        std::clamp(value, 0.0f, 1.0f);
-}
-
-void H264Encoder::setFaceImportance(float value)
-{
-    faceImportance =
-        std::clamp(value, 0.0f, 1.0f);
-}
-
-// ----------------------------------------------------
-// WRITE FRAME
-// ----------------------------------------------------
-
-bool H264Encoder::writeFrame(
-    const cv::Mat& frame)
+bool H264Encoder::writeFrame(const cv::Mat& frame)
 {
     if (!ffmpegPipe || frame.empty())
         return false;
 
     cv::Mat resized;
 
-    // ensure encoder size
-    if (frame.cols != width ||
-        frame.rows != height)
-    {
-        cv::resize(
-            frame,
-            resized,
-            cv::Size(width, height)
-        );
-    }
+    if (frame.cols != width || frame.rows != height)
+        cv::resize(frame, resized, cv::Size(width, height));
     else
-    {
         resized = frame;
-    }
 
-    // ensure contiguous memory
     if (!resized.isContinuous())
         resized = resized.clone();
 
-    // ----------------------------------------------------
-    // PERCEPTUAL ENHANCEMENT
-    // ----------------------------------------------------
+    const size_t expected = width * height * 3;
 
-    if (regionImportance > 0.55f ||
-        faceImportance > 0.45f)
+    size_t written = fwrite(resized.data, 1, expected, ffmpegPipe);
+
+    if (written != expected)
     {
-        cv::Mat blurred;
-
-        cv::GaussianBlur(
-            resized,
-            blurred,
-            cv::Size(0, 0),
-            2.0
-        );
-
-        cv::addWeighted(
-            resized,
-            1.5,
-            blurred,
-            -0.5,
-            0,
-            resized
-        );
-    }
-
-    // ----------------------------------------------------
-    // WRITE RAW FRAME
-    // ----------------------------------------------------
-
-    const size_t expectedBytes =
-        width * height * 3;
-
-    size_t written =
-        fwrite(
-            resized.data,
-            1,
-            expectedBytes,
-            ffmpegPipe
-        );
-
-    if (written != expectedBytes)
-    {
-        logError(
-            "FFmpeg write mismatch: " +
-            std::to_string(written) +
-            "/" +
-            std::to_string(expectedBytes)
-        );
-
+        logError("Encoder write failure → pipe likely dead");
+        close();
         return false;
     }
 
     fflush(ffmpegPipe);
-
     return true;
 }
 
-// ----------------------------------------------------
-// CLOSE
-// ----------------------------------------------------
+void H264Encoder::setQuality(int crf)
+{
+    pendingCRF = std::clamp(crf, 18, 40);
+    currentCRF = pendingCRF;
+}
+
+void H264Encoder::setRegionImportance(float v)
+{
+    regionImportance = std::clamp(v, 0.0f, 1.0f);
+}
+
+void H264Encoder::setFaceImportance(float v)
+{
+    faceImportance = std::clamp(v, 0.0f, 1.0f);
+}
 
 void H264Encoder::close()
 {
     if (ffmpegPipe)
     {
         fflush(ffmpegPipe);
-
         pclose(ffmpegPipe);
-
         ffmpegPipe = nullptr;
 
-        logInfo(
-            "Encoder closed (CRF=" +
-            std::to_string(currentCRF) +
-            ")"
-        );
+        logInfo("Encoder closed (" +
+            std::string(hwActive ? "HW" : "SW") +
+            ")");
     }
 }

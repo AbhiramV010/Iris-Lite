@@ -13,22 +13,18 @@ public:
     bool open(const std::string& outputPath, int crf);
     bool writeFrame(const cv::Mat& frame);
 
-    // runtime adaptive quality
     void setQuality(int crf);
-
-    // perceptual weighting
     void setRegionImportance(float value);
     void setFaceImportance(float value);
 
     void close();
 
-    bool isOpen() const
-    {
-        return ffmpegPipe != nullptr;
-    }
+    bool isOpen() const { return ffmpegPipe != nullptr; }
 
 private:
-    std::string buildCommand(const std::string& outputPath, int crf);
+    std::string buildCommand(const std::string& outputPath, int crf, bool hw);
+
+    bool testPipeAlive();
 
 private:
     int width;
@@ -37,12 +33,13 @@ private:
     bool useHardware;
 
     FILE* ffmpegPipe = nullptr;
+    std::string currentPath;
 
-    // adaptive runtime state
+    bool hwActive = false;
+
     int currentCRF = 28;
     int pendingCRF = 28;
 
-    // perceptual runtime state
     float regionImportance = 0.0f;
     float faceImportance = 0.0f;
 };

@@ -243,7 +243,7 @@ void CompressionEngine::processEvent(
 
         bool shouldDrop =
             decision.dropFrame &&
-            pressure > 0.92f &&
+            pressure > 0.96f &&
             fusedImportance < 0.25f;
 
         // preserve continuity
