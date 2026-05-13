@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://git.io/typing-svg">
-    <img src="https://readme-typing-svg.demolab.com?font=Rajdhani&weight=700&size=40&pause=1000&color=7ab8f5&center=true&vCenter=true&width=1000&lines=Iris-Lite;A+spatially-aware+camera+system;Working+to+reduce+storage+usage;and+increase+environmental+friendliness" alt="Iris-Lite Banner" />
+    <img src="https://readme-typing-svg.demolab.com?font=Share-Tech-Mono&weight=700&size=40&pause=1000&color=7ab8f5&center=true&vCenter=true&width=1000&lines=Iris-Lite;A+spatially-aware+camera+system;Working+to+reduce+storage+usage;and+increase+environmental+friendliness" alt="Iris-Lite Banner" />
   </a>
 </p>
 
