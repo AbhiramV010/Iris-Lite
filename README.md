@@ -202,7 +202,7 @@ Any modifications or derivatives **must** be redistributed under the same licens
 
 ---
 ### Analysis
-<iframe src="https://drive.google.com/file/d/1g8KMuVgsnNu3CceD37JIQUfp5GJIrGIg/preview" width="100%" height="500px"></iframe>
+Will be released on GitHub after the competition 
 ---
 
 ## Acknowledgements
