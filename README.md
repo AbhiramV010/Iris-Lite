@@ -15,8 +15,8 @@
 **STEAM IC 2026 Computer Science Project**
 
 Project Programming by Abhiram Vadali & Shreyash Thakur
-- Abhiram Vadali -> Detection software & logic
-- Shreyash Thakur -> Saliency-based Compression Software
+- Abhiram Vadali → Detection software & logic
+- Shreyash Thakur → Saliency-based Compression Software
 Lab Report by Abhiram V, Shreyash T, Subeg G, and Atharv R.
 
 README.md written by Subeg Singh Gill
