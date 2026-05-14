@@ -1,7 +1,9 @@
 # This is not intended for execution.
 # Previously, the system as a whole would refuse to run if it's on windows (annoying for devs)
 # This ensures that gpio functionality is disabled as a whole if the operating system is not Linux
-    # memory locking is very finicky on Windows, so just test on Linux
+    # memory locking is very finicky on Windows, so just test on Linux/RPi
+# If testing is done on a normal desktop with a Linux distro, unexpected issues may happen
+
 import time
 import platform
 
