@@ -14,7 +14,7 @@ uxterm -T "Main Tool" -e "python3 ./Decision/main.py" &
 sleep 1 && draw_bar 1
 
 uxterm -T "Camera Utility" -e "python3 ./Decision/startCamera.py" & 
-sleep 5 && draw_bar 2
+sleep 1 && draw_bar 2
 
 uxterm -T "Listener Tool" -e "python3 ./Decision/listener.py" & 
 sleep 1 && draw_bar 3
