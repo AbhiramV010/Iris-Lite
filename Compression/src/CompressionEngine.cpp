@@ -3,11 +3,9 @@
 #include "SharedMemoryConfig.hpp"
 
 #include <opencv2/opencv.hpp>
-
 #include <chrono>
 #include <thread>
 #include <algorithm>
-#include <vector>
 
 // --------------------------------------------------
 // INIT
@@ -45,10 +43,7 @@ bool CompressionEngine::initialize(const Config& cfg)
 
     if (!buffer->initialize() || !buffer->isValid())
     {
-        logError(
-            "SharedFrameBuffer failed to initialize"
-        );
-
+        logError("SharedFrameBuffer failed to initialize");
         return false;
     }
 
@@ -61,9 +56,7 @@ bool CompressionEngine::initialize(const Config& cfg)
         this
     );
 
-    logInfo(
-        "CompressionEngine READY"
-    );
+    logInfo("CompressionEngine READY (ROBUST RING MODE)");
 
     return true;
 }
@@ -72,24 +65,17 @@ bool CompressionEngine::initialize(const Config& cfg)
 // EVENT QUEUE
 // --------------------------------------------------
 
-void CompressionEngine::enqueueEvent(
-    const EventWindow& event
-)
+void CompressionEngine::enqueueEvent(const EventWindow& event)
 {
     logInfo(
-        "EVENT IN | " +
-        event.trigger +
-        " [" +
-        std::to_string(event.startFrame) +
-        " -> " +
-        std::to_string(event.endFrame) +
-        "]"
+        "EVENT IN | " + event.trigger +
+        " [" + std::to_string(event.startFrame) +
+        " -> " + std::to_string(event.endFrame) + "]"
     );
 
     cluster.add(event);
 
     auto events = cluster.flush();
-
     if (events.empty())
         events.push_back(event);
 
@@ -97,14 +83,9 @@ void CompressionEngine::enqueueEvent(
         std::lock_guard<std::mutex> lock(mtx);
 
         for (const auto& e : events)
-        {
             queue.push(e);
-        }
 
-        logInfo(
-            "QUEUE SIZE = " +
-            std::to_string(queue.size())
-        );
+        logInfo("QUEUE SIZE = " + std::to_string(queue.size()));
     }
 
     cv.notify_one();
@@ -125,13 +106,9 @@ void CompressionEngine::workerLoop()
         {
             std::unique_lock<std::mutex> lock(mtx);
 
-            cv.wait(
-                lock,
-                [&]
-                {
-                    return stop || !queue.empty();
-                }
-            );
+            cv.wait(lock, [&] {
+                return stop || !queue.empty();
+                });
 
             if (stop && queue.empty())
                 break;
@@ -143,11 +120,8 @@ void CompressionEngine::workerLoop()
         logInfo(
             "DEQUEUED EVENT | " +
             event.trigger +
-            " [" +
-            std::to_string(event.startFrame) +
-            " -> " +
-            std::to_string(event.endFrame) +
-            "]"
+            " [" + std::to_string(event.startFrame) +
+            " -> " + std::to_string(event.endFrame) + "]"
         );
 
         processEvent(event);
@@ -155,12 +129,19 @@ void CompressionEngine::workerLoop()
 }
 
 // --------------------------------------------------
+// FRAME VALIDITY CHECK (CRITICAL FIX)
+// --------------------------------------------------
+
+static inline bool isFrameValid(uint32_t size)
+{
+    return size > 0 && size < SLOT_SIZE;
+}
+
+// --------------------------------------------------
 // MAIN PIPELINE
 // --------------------------------------------------
 
-void CompressionEngine::processEvent(
-    const EventWindow& event
-)
+void CompressionEngine::processEvent(const EventWindow& event)
 {
     std::string path = storage->buildPath(
         event.startFrame,
@@ -169,156 +150,142 @@ void CompressionEngine::processEvent(
     );
 
     logInfo(
-        "EVENT START | " +
-        event.trigger +
-        " frames " +
-        std::to_string(event.startFrame) +
-        " -> " +
-        std::to_string(event.endFrame)
+        "EVENT START | " + event.trigger +
+        " frames " + std::to_string(event.startFrame) +
+        " -> " + std::to_string(event.endFrame)
     );
 
     const uint64_t start = event.startFrame;
     const uint64_t end = event.endFrame;
 
     bool encoderOpened = false;
-
     cv::Mat prevFrame;
 
-    int encoded = 0;
-    int dropped = 0;
-    int failed = 0;
+    int encoded = 0, dropped = 0, failed = 0;
 
-    for (
-        uint64_t i = start;
-        i <= end && !stop;
-        ++i
-    )
+    // --------------------------------------------------
+    // IMPORTANT: read head position (writer progress)
+    // --------------------------------------------------
+
+    uint64_t writerHead = buffer->getHeadTail()[0];
+
+    logInfo("WRITER HEAD = " + std::to_string(writerHead));
+
+    for (uint64_t i = start; i <= end && !stop; ++i)
     {
-        std::vector<uint8_t> jpeg;
+        uint64_t index = i % BUFFER_SIZE;
 
-        if (!buffer->readFrame(i, jpeg))
+        // --------------------------------------------------
+        // DO NOT READ FUTURE-WRITTEN FRAMES
+        // --------------------------------------------------
+
+        if (i >= writerHead + BUFFER_SIZE)
+        {
+            logInfo("WAITING FOR WRITER... frame too new");
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+
+        uint32_t size = buffer->getFrameSize(index);
+
+        if (!isFrameValid(size))
         {
             failed++;
             continue;
         }
 
-        cv::Mat decoded =
-            cv::imdecode(
-                jpeg,
-                cv::IMREAD_COLOR
-            );
+        const uint8_t* data = buffer->getFrameData(index);
 
-        if (decoded.empty())
+        if (!data)
         {
             failed++;
             continue;
         }
 
-        cv::Mat frame = decoded.clone();
+        std::vector<uint8_t> jpeg(data, data + size);
 
-        float pressure =
-            governor->computePressure();
+        cv::Mat frame = cv::imdecode(jpeg, cv::IMREAD_COLOR);
 
-        auto decision =
-            orchestrator->compute(
-                frame,
-                prevFrame,
-                i,
-                (start + end) / 2,
-                event.trigger
-            );
+        if (frame.empty())
+        {
+            failed++;
+            continue;
+        }
 
-        float fused =
-            policy->fuseImportance(
-                decision.importance,
-                1.0f,
-                pressure
-            );
+        cv::Mat safeFrame = frame.clone();
 
-        // ------------------------------------------
+        float pressure = governor->computePressure();
+
+        auto decision = orchestrator->compute(
+            safeFrame,
+            prevFrame,
+            i,
+            (start + end) / 2,
+            event.trigger
+        );
+
+        float fused = policy->fuseImportance(
+            decision.importance,
+            1.0f,
+            pressure
+        );
+
+        // --------------------------------------------------
         // OPEN ENCODER
-        // ------------------------------------------
+        // --------------------------------------------------
 
         if (!encoderOpened)
         {
-            int crf =
-                policy->computeCRF(fused);
+            int crf = policy->computeCRF(fused);
 
-            logInfo(
-                "OPEN ENCODER | " + path
-            );
+            logInfo("OPEN ENCODER | " + path);
 
             if (!encoder->open(path, crf))
             {
-                logError(
-                    "Encoder open failed"
-                );
-
+                logError("Encoder open failed");
                 return;
             }
 
             encoderOpened = true;
         }
 
-        encoder->setQuality(
-            decision.crf
-        );
+        encoder->setQuality(decision.crf);
+        encoder->setRegionImportance(fused);
 
-        encoder->setRegionImportance(
-            fused
-        );
-
-        bool shouldDrop =
+        bool drop =
             decision.dropFrame &&
             pressure > 0.96f &&
             fused < 0.25f;
 
-        if (shouldDrop)
+        if (drop)
         {
             dropped++;
-            prevFrame = frame;
+            prevFrame = safeFrame;
             continue;
         }
 
-        bool success =
-            encoder->writeFrame(frame);
-
-        if (!success)
+        if (!encoder->writeFrame(safeFrame))
         {
             failed++;
-
-            logError(
-                "Encoder write failed"
-            );
-
-            break;
+            continue;
         }
 
         encoded++;
-
-        prevFrame = frame;
+        prevFrame = safeFrame;
 
         std::this_thread::sleep_for(
-            std::chrono::microseconds(
-                1000000 / config.fps
-            )
+            std::chrono::microseconds(1000000 / config.fps)
         );
     }
 
     if (encoderOpened)
-    {
         encoder->close();
-    }
 
     logInfo(
-        "EVENT END | " +
-        path +
-        " encoded=" +
-        std::to_string(encoded) +
-        " dropped=" +
-        std::to_string(dropped) +
-        " failed=" +
-        std::to_string(failed)
+        "EVENT END | " + path +
+        " encoded=" + std::to_string(encoded) +
+        " dropped=" + std::to_string(dropped) +
+        " failed=" + std::to_string(failed)
     );
 }
 
@@ -329,20 +296,13 @@ void CompressionEngine::processEvent(
 void CompressionEngine::shutdown()
 {
     stop = true;
-
     cv.notify_all();
 
     if (worker.joinable())
-    {
         worker.join();
-    }
 
     if (encoder && encoder->isOpen())
-    {
         encoder->close();
-    }
 
-    logInfo(
-        "CompressionEngine shutdown complete"
-    );
+    logInfo("CompressionEngine shutdown complete");
 }
