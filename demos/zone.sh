@@ -10,13 +10,13 @@ draw_bar() {
 echo "Starting Iris-Lite Zone Monitor"
 draw_bar 0
 
-uxterm -T "Main Tool" -e "python3 ./Decision/main.py" & 
+uxterm -T "Main Tool" -e "bash -c 'python3 ./Decision/main.py; echo; read -p \"Press ENTER to close...\"'" &
 sleep 1 && draw_bar 1
 
-uxterm -T "Camera Utility" -e "python3 ./Decision/startCamera.py" & 
+uxterm -T "Camera Utility" -e "bash -c 'python3 ./Decision/startCamera.py; echo; read -p \"Press ENTER to close...\"'" &
 sleep 1 && draw_bar 2
 
-uxterm -T "Zone Monitor" -e "python3 ./Decision/zone_monitor.py" & 
+uxterm -T "Zone Monitor" -e "bash -c 'python3 ./Decision/zone_monitor.py; echo; read -p \"Press ENTER to close...\"'" &
 sleep 1 && draw_bar 3
 
 echo -e "\nZone Monitor active."
