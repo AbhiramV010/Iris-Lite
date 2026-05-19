@@ -1,109 +1,148 @@
 #include "SharedFrameBuffer.hpp"
+#include "logging.hpp"
 
-#include <fcntl.h>
 #include <sys/mman.h>
+#include <fcntl.h>
 #include <unistd.h>
-#include <cstring>
+
+#include <thread>
+#include <chrono>
+
+static constexpr const char* FRAME_DATA_SHM =
+"/iris_frame_buffer_data";
+
+static constexpr const char* FRAME_SIZE_SHM =
+"/iris_frame_sizes";
+
+static constexpr const char* HEAD_TAIL_SHM =
+"/iris_frame_head_tail";
+
+// --------------------------------------------------
+// INIT
+// --------------------------------------------------
 
 bool SharedFrameBuffer::initialize()
 {
-    dataFd = shm_open(FRAME_DATA_NAME, O_RDONLY, 0666);
-    sizeFd = shm_open(FRAME_SIZE_NAME, O_RDONLY, 0666);
-    headTailFd = shm_open(FRAME_HEADTAIL_NAME, O_RDONLY, 0666);
+    return mapMemory();
+}
 
-    if (dataFd < 0 || sizeFd < 0 || headTailFd < 0)
-        return false;
-
-    frameBuffer = static_cast<uint8_t*>(
-        mmap(
-            nullptr,
-            BUFFER_SIZE * SLOT_SIZE,
-            PROT_READ,
-            MAP_SHARED,
-            dataFd,
-            0
-        )
-    );
-
-    frameSizes = static_cast<uint32_t*>(
-        mmap(
-            nullptr,
-            BUFFER_SIZE * sizeof(uint32_t),
-            PROT_READ,
-            MAP_SHARED,
-            sizeFd,
-            0
-        )
-    );
-
-    headTail = static_cast<uint64_t*>(
-        mmap(
-            nullptr,
-            sizeof(uint64_t) * 2,
-            PROT_READ,
-            MAP_SHARED,
-            headTailFd,
-            0
-        )
-    );
-
-    return
+bool SharedFrameBuffer::isValid() const
+{
+    return frameBuffer &&
+        frameSizes &&
+        headTail &&
         frameBuffer != MAP_FAILED &&
         frameSizes != MAP_FAILED &&
         headTail != MAP_FAILED;
 }
 
-bool SharedFrameBuffer::isValid() const
+// --------------------------------------------------
+// MAP MEMORY
+// --------------------------------------------------
+
+bool SharedFrameBuffer::mapMemory()
 {
-    return
-        frameBuffer &&
-        frameSizes &&
-        headTail;
+    int tries = 0;
+
+    while ((dataFd =
+        shm_open(FRAME_DATA_SHM, O_RDONLY, 0666)) < 0)
+    {
+        if (++tries > 200)
+        {
+            logError("Frame buffer SHM timeout");
+            return false;
+        }
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
+    }
+
+    sizeFd =
+        shm_open(FRAME_SIZE_SHM, O_RDONLY, 0666);
+
+    headTailFd =
+        shm_open(HEAD_TAIL_SHM, O_RDONLY, 0666);
+
+    if (sizeFd < 0 || headTailFd < 0)
+    {
+        logError("Failed to open SHM metadata");
+        return false;
+    }
+
+    // --------------------------------------------------
+    // MAP FRAME DATA
+    // --------------------------------------------------
+
+    frameBuffer = static_cast<uint8_t*>(mmap(
+        nullptr,
+        BUFFER_SIZE * SLOT_SIZE,
+        PROT_READ,
+        MAP_SHARED,
+        dataFd,
+        0
+    ));
+
+    // --------------------------------------------------
+    // MAP FRAME SIZES
+    // --------------------------------------------------
+
+    frameSizes = static_cast<uint32_t*>(mmap(
+        nullptr,
+        BUFFER_SIZE * sizeof(uint32_t),
+        PROT_READ,
+        MAP_SHARED,
+        sizeFd,
+        0
+    ));
+
+    // --------------------------------------------------
+    // MAP HEAD/TAIL
+    // --------------------------------------------------
+
+    headTail = static_cast<uint64_t*>(mmap(
+        nullptr,
+        sizeof(uint64_t) * 2,
+        PROT_READ,
+        MAP_SHARED,
+        headTailFd,
+        0
+    ));
+
+    if (!isValid())
+    {
+        logError("Shared memory mmap failed");
+        return false;
+    }
+
+    logInfo("SharedFrameBuffer mapped successfully");
+
+    return true;
 }
 
-uint64_t SharedFrameBuffer::latestFrameId() const
+// --------------------------------------------------
+// ACCESSORS
+// --------------------------------------------------
+
+const uint8_t* SharedFrameBuffer::getFrameData(
+    uint64_t index) const
 {
-    return headTail[0];
+    return frameBuffer +
+        ((index % BUFFER_SIZE) * SLOT_SIZE);
 }
 
-bool SharedFrameBuffer::validateJPEG(
-    const std::vector<uint8_t>& data
-) const
+uint32_t SharedFrameBuffer::getFrameSize(
+    uint64_t index) const
 {
-    if (data.size() < 4)
-        return false;
+    uint32_t size =
+        frameSizes[index % BUFFER_SIZE];
 
-    return
-        data[0] == 0xFF &&
-        data[1] == 0xD8 &&
-        data[data.size() - 2] == 0xFF &&
-        data[data.size() - 1] == 0xD9;
+    // HARD SAFETY CHECK
+    if (size == 0 || size > SLOT_SIZE)
+        return 0;
+
+    return size;
 }
-
-bool SharedFrameBuffer::readFrame(
-    uint64_t absoluteFrameId,
-    std::vector<uint8_t>& out
-)
+const uint64_t* SharedFrameBuffer::getHeadTail() const
 {
-    uint64_t slot = absoluteFrameId % BUFFER_SIZE;
-
-    uint32_t size1 = frameSizes[slot];
-
-    if (size1 == 0 || size1 > SLOT_SIZE)
-        return false;
-
-    out.resize(size1);
-
-    memcpy(
-        out.data(),
-        frameBuffer + (slot * SLOT_SIZE),
-        size1
-    );
-
-    uint32_t size2 = frameSizes[slot];
-
-    if (size1 != size2)
-        return false;
-
-    return validateJPEG(out);
+    return headTail;
 }
