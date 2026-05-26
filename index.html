@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iris-Lite — Documentation</title>
+    <title>Iris-Lite — Documentation System</title>
     <style>
         :root {
             --bg: #050505;
@@ -11,7 +11,6 @@
             --border: #1e1e1e;
             --text: #999999;
             --text-bright: #ffffff;
-            --accent: #e5e5e5;
             --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace;
             --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Monaco, Consolas, monospace;
         }
@@ -32,7 +31,7 @@
             display: flex;
         }
 
-        /* Sidebar Navigation */
+        /* Fixed Sidebar Navigation */
         aside {
             width: 260px;
             height: 100vh;
@@ -55,9 +54,6 @@
             text-decoration: none;
             font-size: 1.1rem;
             letter-spacing: -0.03em;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
 
         .logo-area span {
@@ -79,18 +75,28 @@
             margin-bottom: 0.75rem;
         }
 
-        nav a {
+        nav button {
+            background: none;
+            border: none;
             color: var(--text);
-            text-decoration: none;
             font-family: var(--font-mono);
             font-size: 0.85rem;
+            text-align: left;
+            cursor: pointer;
             transition: color 0.2s ease, transform 0.2s ease;
             display: inline-block;
+            padding: 0.2rem 0;
+            width: 100%;
         }
 
-        nav a:hover {
+        nav button:hover {
             color: var(--text-bright);
             transform: translateX(3px);
+        }
+
+        nav button.active-nav {
+            color: var(--text-bright);
+            font-weight: 600;
         }
 
         .sidebar-footer a {
@@ -105,7 +111,7 @@
             color: var(--text-bright);
         }
 
-        /* Main Content Layout */
+        /* Page View Shell */
         main {
             margin-left: 260px;
             max-width: 900px;
@@ -113,9 +119,14 @@
             padding: 4rem 4rem 8rem 4rem;
         }
 
-        section {
-            margin-bottom: 5rem;
-            animation: fadeIn 0.6s ease coordinates;
+        /* Modular Page Layouts */
+        .page {
+            display: none;
+        }
+
+        .page.active-page {
+            display: block;
+            animation: fadeIn 0.4s ease forwards;
         }
 
         h1, h2, h3 {
@@ -148,7 +159,7 @@
             margin-bottom: 1.25rem;
         }
 
-        /* Technical Highlight Elements */
+        /* System Elements */
         code {
             font-family: var(--font-mono);
             background: var(--surface);
@@ -209,7 +220,6 @@
             color: #777;
         }
 
-        /* System Metrics Table */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -229,15 +239,11 @@
             font-weight: 500;
         }
 
-        td {
-            color: var(--text);
-        }
-
-        /* Subtle Fade-in Animation */
+        /* Subtle Animation Definitions */
         @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(6px);
+                transform: translateY(4px);
             }
             to {
                 opacity: 1;
@@ -284,14 +290,14 @@
 
     <aside>
         <div class="logo-area">
-            <a href="#">Iris-Lite <span>v1.0</span></a>
+            <a href="#" onclick="switchPage('page-hero')">Iris-Lite <span>v1.0</span></a>
         </div>
         <nav>
             <ul>
-                <li><a href="#architecture">01 // Architecture</a></li>
-                <li><a href="#detection">02 // Event Filtration</a></li>
-                <li><a href="#compression">03 // P.E.L.I.C.A.N.</a></li>
-                <li><a href="#metrics">04 // Performance Data</a></li>
+                <li><button id="nav-page-architecture" class="active-nav" onclick="switchPage('page-architecture')">01 // Architecture</button></li>
+                <li><button id="nav-page-detection" onclick="switchPage('page-detection')">02 // Event Filtration</button></li>
+                <li><button id="nav-page-compression" onclick="switchPage('page-compression')">03 // P.E.L.I.C.A.N.</button></li>
+                <li><button id="nav-page-metrics" onclick="switchPage('page-metrics')">04 // Performance Data</button></li>
             </ul>
         </nav>
         <div class="sidebar-footer">
@@ -300,13 +306,10 @@
     </aside>
 
     <main>
-        <section id="hero">
+        <div id="page-architecture" class="page active-page">
             <h1>Iris-Lite</h1>
             <div class="subtitle">Perceptual Edge Surveillance Architecture</div>
-            <p>An intelligent, on-device security monitoring system configured for resource-constrained hardware. Iris-Lite replaces persistent cloud streaming with an event-driven, resource-aware pipeline running entirely on local shared memory.</p>
-        </section>
-
-        <section id="architecture">
+            
             <h2>01 // Architecture</h2>
             <p>The system utilizes a multi-tiered pipeline executed on a Raspberry Pi 4B. By managing frames entirely within a sliding 5-minute Shared Memory (SHM) buffer, it bypasses continuous disk I/O overhead and avoids premature flash storage cell wear.</p>
             
@@ -320,9 +323,9 @@
                     <p>Monitors regional grid parameters to transition system dependencies adaptively based on energy footprints.</p>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <section id="detection">
+        <div id="page-detection" class="page">
             <h2>02 // Event Filtration</h2>
             <p>Iris-Lite evaluates scene activity through two isolation segments before promoting arrays to full storage commits:</p>
             <pre><code>// Dual-Tier Spatial Isolation Pipeline
@@ -330,10 +333,10 @@ Tier_1: Always-On Background Subtraction (CNT)
         └── IF Contour Threshold Crossed -> Activate Tier_2
 Tier_2: High-Context Motion Entropy Analysis
         └── Verification: Spatial-Temporal Consistency Filter (50-Frame validation)</code></pre>
-            <p>An on-board LiteRT convolutional network concurrently reviews ambient acoustic waveforms to scan for high-risk acoustic event anomalies (e.g., glass breakage, crashing) above a hard thresholds of <code>-21.9 dBFS</code>.</p>
-        </section>
+            <p>An on-board LiteRT convolutional network concurrently reviews ambient acoustic waveforms to scan for high-risk acoustic event anomalies (e.g., glass breakage, crashing) above a hard threshold of <code>-21.9 dBFS</code>.</p>
+        </div>
 
-        <section id="compression">
+        <div id="page-compression" class="page">
             <h2>03 // P.E.L.I.C.A.N. Engine</h2>
             <p>The <em>Perceptual Edge Lightweight Intelligent Compression and Adaptive Network</em> dictates frame prioritization. Instead of processing raw arrays uniformly, it optimizes stream density relative to historical scene context metrics.</p>
             <pre><code>[Input Stream] ──> Dual Resolution Matrix (1080p / 320x180)
@@ -341,9 +344,9 @@ Tier_2: High-Context Motion Entropy Analysis
                        ├──> Feature Density Extraction (Edge/Motion)
                        └──> Real-time Quantization Control (Dynamic CRF)</code></pre>
             <p>When the internal system governor reports elevated thermal or processing strain, quantization thresholds scale to guarantee linear throughput speeds without compromising tracking cohesion during event bursts.</p>
-        </section>
+        </div>
 
-        <section id="metrics">
+        <div id="page-metrics" class="page">
             <h2>04 // Performance Benchmarks</h2>
             <p>Telemetry metrics verified under multi-process constraints over a standard evaluation interval:</p>
             
@@ -377,8 +380,38 @@ Tier_2: High-Context Motion Entropy Analysis
                     </tr>
                 </tbody>
             </table>
-        </section>
+        </div>
     </main>
 
+    <script>
+        function switchPage(pageId) {
+            // Hide all pages
+            const pages = document.querySelectorAll('.page');
+            pages.forEach(page => {
+                page.classList.remove('active-page');
+            });
+
+            // Show selected page
+            const targetPage = document.getElementById(pageId);
+            if(targetPage) {
+                targetPage.classList.add('active-page');
+            }
+
+            // Reset navigation links styling
+            const navButtons = document.querySelectorAll('nav button');
+            navButtons.forEach(button => {
+                button.classList.remove('active-nav');
+            });
+
+            // Set current link as active
+            const activeNavButton = document.getElementById('nav-' + pageId);
+            if(activeNavButton) {
+                activeNavButton.classList.add('active-nav');
+            }
+
+            // Smooth scroll back to top of main on transition
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
 </body>
 </html>
