@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iris-Lite — Documentation System</title>
+    <title>Iris-Lite — Documentation</title>
     <style>
         :root {
             --bg: #050505;
@@ -11,15 +11,23 @@
             --border: #1e1e1e;
             --text: #999999;
             --text-bright: #ffffff;
+            --accent: #e5e5e5;
             --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace;
             --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Monaco, Consolas, monospace;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(circle at top, #020b2e 0, #020617 40%, #000 100%);
+      color: var(--text);
+      font-family: var(--sans);
+      scroll-behavior: smooth;
+    }
 
         body {
             background-color: var(--bg);
@@ -31,7 +39,7 @@
             display: flex;
         }
 
-        /* Fixed Sidebar Navigation */
+        /* Sidebar Navigation */
         aside {
             width: 260px;
             height: 100vh;
@@ -54,6 +62,9 @@
             text-decoration: none;
             font-size: 1.1rem;
             letter-spacing: -0.03em;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .logo-area span {
@@ -75,28 +86,18 @@
             margin-bottom: 0.75rem;
         }
 
-        nav button {
-            background: none;
-            border: none;
+        nav a {
             color: var(--text);
+            text-decoration: none;
             font-family: var(--font-mono);
             font-size: 0.85rem;
-            text-align: left;
-            cursor: pointer;
             transition: color 0.2s ease, transform 0.2s ease;
             display: inline-block;
-            padding: 0.2rem 0;
-            width: 100%;
         }
 
-        nav button:hover {
+        nav a:hover {
             color: var(--text-bright);
             transform: translateX(3px);
-        }
-
-        nav button.active-nav {
-            color: var(--text-bright);
-            font-weight: 600;
         }
 
         .sidebar-footer a {
@@ -111,7 +112,7 @@
             color: var(--text-bright);
         }
 
-        /* Page View Shell */
+        /* Main Content Layout */
         main {
             margin-left: 260px;
             max-width: 900px;
@@ -119,14 +120,9 @@
             padding: 4rem 4rem 8rem 4rem;
         }
 
-        /* Modular Page Layouts */
-        .page {
-            display: none;
-        }
-
-        .page.active-page {
-            display: block;
-            animation: fadeIn 0.4s ease forwards;
+        section {
+            margin-bottom: 5rem;
+            animation: fadeIn 0.6s ease coordinates;
         }
 
         h1, h2, h3 {
@@ -159,7 +155,7 @@
             margin-bottom: 1.25rem;
         }
 
-        /* System Elements */
+        /* Technical Highlight Elements */
         code {
             font-family: var(--font-mono);
             background: var(--surface);
@@ -170,23 +166,36 @@
             font-size: 0.85rem;
         }
 
-        pre {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 1.25rem;
-            overflow-x: auto;
-            margin: 1.5rem 0;
-            border-radius: 4px;
-        }
+    pre {
+      margin: 0.5rem 0;
+      padding: 0.7rem 0.8rem;
+      border-radius: 0.6rem;
+      background: var(--code-bg);
+      border: 1px solid rgba(30, 64, 175, 0.7);
+      overflow-x: auto;
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
 
-        pre code {
-            background: none;
-            border: none;
-            padding: 0;
-            color: #bcbcbc;
-            display: block;
-            line-height: 1.5;
-        }
+    pre code {
+      border: none;
+      padding: 0;
+      background: transparent;
+    }
+
+    .callout {
+      margin-top: 0.6rem;
+      padding: 0.55rem 0.7rem;
+      border-radius: 0.6rem;
+      border: 1px dashed rgba(148, 163, 184, 0.7);
+      background: rgba(15, 23, 42, 0.96);
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    .callout strong {
+      color: #e5e7eb;
+    }
 
         .grid-two {
             display: grid;
@@ -220,6 +229,7 @@
             color: #777;
         }
 
+        /* System Metrics Table */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -239,11 +249,15 @@
             font-weight: 500;
         }
 
-        /* Subtle Animation Definitions */
+        td {
+            color: var(--text);
+        }
+
+        /* Subtle Fade-in Animation */
         @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(4px);
+                transform: translateY(6px);
             }
             to {
                 opacity: 1;
@@ -251,65 +265,100 @@
             }
         }
 
-        /* Responsive */
-        @media(max-width: 768px) {
-            body {
-                flex-direction: column;
-            }
-            aside {
-                width: 100%;
-                height: auto;
-                position: relative;
-                border-right: none;
-                border-bottom: 1px solid var(--border);
-                padding: 1.5rem;
-            }
-            nav {
-                margin-top: 1.5rem;
-            }
-            nav ul {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 1rem;
-            }
-            nav li {
-                margin-bottom: 0;
-            }
-            main {
-                margin-left: 0;
-                width: 100%;
-                padding: 2rem 1.5rem;
-            }
-            .grid-two {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+    .fade-in-delayed {
+      animation: fadeUp 750ms var(--transition-med) both;
+    }
+  </style>
 </head>
 <body>
 
     <aside>
         <div class="logo-area">
-            <a href="#" onclick="switchPage('page-hero')">Iris-Lite <span>v1.0</span></a>
+            <a href="#">Iris-Lite <span>v1.0</span></a>
         </div>
         <nav>
             <ul>
-                <li><button id="nav-page-architecture" class="active-nav" onclick="switchPage('page-architecture')">01 // Architecture</button></li>
-                <li><button id="nav-page-detection" onclick="switchPage('page-detection')">02 // Event Filtration</button></li>
-                <li><button id="nav-page-compression" onclick="switchPage('page-compression')">03 // P.E.L.I.C.A.N.</button></li>
-                <li><button id="nav-page-metrics" onclick="switchPage('page-metrics')">04 // Performance Data</button></li>
+                <li><a href="#architecture">01 // Architecture</a></li>
+                <li><a href="#detection">02 // Event Filtration</a></li>
+                <li><a href="#compression">03 // P.E.L.I.C.A.N.</a></li>
+                <li><a href="#metrics">04 // Performance Data</a></li>
             </ul>
         </nav>
-        <div class="sidebar-footer">
-            <a href="https://github.com/AbhiramV010/Iris-Lite" target="_blank">→ GitHub Repository</a>
+      </div>
+    </div>
+
+    <header>
+      <div class="header-main">
+        <div class="title-block">
+          <div class="title-pill">
+            <span class="title-pill-dot"></span>
+            IRIS_LITE · DEV BUILD
+          </div>
+          <h1>
+            <span class="title-gradient">Intelligent Camera System</span>
+          </h1>
+          <p class="subtitle">
+            A multi‑process, event‑driven camera pipeline for Raspberry Pi 4B—combining motion, audio, zones, and GPIO
+            to capture only the moments that matter, then compressing them with a C++ importance‑aware H.264 engine.
+          </p>
+          <div class="badge-row">
+            <div class="badge">
+              <span class="badge-dot"></span>
+              1080p · 24 FPS · Rolling buffer
+            </div>
+            <div class="badge">
+              Multi‑tier trigger engine (motion · audio · zones · GPIO)
+            </div>
+            <div class="badge">
+              Dynamic H.264 compression (CRF 16–36)
+            </div>
+            <div class="badge">
+              Raspberry Pi 4B · CS Passion Project
+            </div>
+          </div>
         </div>
-    </aside>
+
+        <div class="header-meta">
+          <div class="meta-card">
+            <div class="meta-label">Core stack</div>
+            <div class="meta-value">
+              Python · C++20 · OpenCV · FFmpeg
+            </div>
+            <div class="pill-row">
+              <span class="pill pill-strong">Raspberry Pi OS</span>
+              <span class="pill">TFLite audio</span>
+            </div>
+          </div>
+          <div class="meta-card">
+            <div class="meta-label">Capture profile</div>
+            <div class="meta-value">
+              1080p · 24 FPS · 5‑minute buffer
+            </div>
+            <div class="meta-pill">
+              Event‑driven clips
+            </div>
+          </div>
+          <div class="meta-card">
+            <div class="meta-label">License</div>
+            <div class="meta-value">
+              CC BY‑NC‑SA 4.0
+            </div>
+            <div class="meta-pill">
+              Non‑commercial · Share‑alike
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
 
     <main>
-        <div id="page-architecture" class="page active-page">
+        <section id="hero">
             <h1>Iris-Lite</h1>
             <div class="subtitle">Perceptual Edge Surveillance Architecture</div>
-            
+            <p>An intelligent, on-device security monitoring system configured for resource-constrained hardware. Iris-Lite replaces persistent cloud streaming with an event-driven, resource-aware pipeline running entirely on local shared memory.</p>
+        </section>
+
+        <section id="architecture">
             <h2>01 // Architecture</h2>
             <p>The system utilizes a multi-tiered pipeline executed on a Raspberry Pi 4B. By managing frames entirely within a sliding 5-minute Shared Memory (SHM) buffer, it bypasses continuous disk I/O overhead and avoids premature flash storage cell wear.</p>
             
@@ -323,9 +372,9 @@
                     <p>Monitors regional grid parameters to transition system dependencies adaptively based on energy footprints.</p>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div id="page-detection" class="page">
+        <section id="detection">
             <h2>02 // Event Filtration</h2>
             <p>Iris-Lite evaluates scene activity through two isolation segments before promoting arrays to full storage commits:</p>
             <pre><code>// Dual-Tier Spatial Isolation Pipeline
@@ -333,10 +382,10 @@ Tier_1: Always-On Background Subtraction (CNT)
         └── IF Contour Threshold Crossed -> Activate Tier_2
 Tier_2: High-Context Motion Entropy Analysis
         └── Verification: Spatial-Temporal Consistency Filter (50-Frame validation)</code></pre>
-            <p>An on-board LiteRT convolutional network concurrently reviews ambient acoustic waveforms to scan for high-risk acoustic event anomalies (e.g., glass breakage, crashing) above a hard threshold of <code>-21.9 dBFS</code>.</p>
-        </div>
+            <p>An on-board LiteRT convolutional network concurrently reviews ambient acoustic waveforms to scan for high-risk acoustic event anomalies (e.g., glass breakage, crashing) above a hard thresholds of <code>-21.9 dBFS</code>.</p>
+        </section>
 
-        <div id="page-compression" class="page">
+        <section id="compression">
             <h2>03 // P.E.L.I.C.A.N. Engine</h2>
             <p>The <em>Perceptual Edge Lightweight Intelligent Compression and Adaptive Network</em> dictates frame prioritization. Instead of processing raw arrays uniformly, it optimizes stream density relative to historical scene context metrics.</p>
             <pre><code>[Input Stream] ──> Dual Resolution Matrix (1080p / 320x180)
@@ -344,9 +393,9 @@ Tier_2: High-Context Motion Entropy Analysis
                        ├──> Feature Density Extraction (Edge/Motion)
                        └──> Real-time Quantization Control (Dynamic CRF)</code></pre>
             <p>When the internal system governor reports elevated thermal or processing strain, quantization thresholds scale to guarantee linear throughput speeds without compromising tracking cohesion during event bursts.</p>
-        </div>
+        </section>
 
-        <div id="page-metrics" class="page">
+        <section id="metrics">
             <h2>04 // Performance Benchmarks</h2>
             <p>Telemetry metrics verified under multi-process constraints over a standard evaluation interval:</p>
             
@@ -380,38 +429,8 @@ Tier_2: High-Context Motion Entropy Analysis
                     </tr>
                 </tbody>
             </table>
-        </div>
+        </section>
     </main>
 
-    <script>
-        function switchPage(pageId) {
-            // Hide all pages
-            const pages = document.querySelectorAll('.page');
-            pages.forEach(page => {
-                page.classList.remove('active-page');
-            });
-
-            // Show selected page
-            const targetPage = document.getElementById(pageId);
-            if(targetPage) {
-                targetPage.classList.add('active-page');
-            }
-
-            // Reset navigation links styling
-            const navButtons = document.querySelectorAll('nav button');
-            navButtons.forEach(button => {
-                button.classList.remove('active-nav');
-            });
-
-            // Set current link as active
-            const activeNavButton = document.getElementById('nav-' + pageId);
-            if(activeNavButton) {
-                activeNavButton.classList.add('active-nav');
-            }
-
-            // Smooth scroll back to top of main on transition
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    </script>
 </body>
 </html>
