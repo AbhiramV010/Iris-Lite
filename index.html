@@ -1,20 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iris-Lite — Documentation</title>
-    <style>
-        :root {
-            --bg: #050505;
-            --surface: #0c0c0c;
-            --border: #1e1e1e;
-            --text: #999999;
-            --text-bright: #ffffff;
-            --accent: #e5e5e5;
-            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, monospace;
-            --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Monaco, Consolas, monospace;
-        }
+  <meta charset="UTF-8" />
+  <title>Iris_Lite Documentation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #020617;
+      --bg-alt: #02091a;
+      --bg-elevated: #020b21;
+      --navy: #020b2e;
+      --navy-soft: #071633;
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.16);
+      --accent-strong: #0ea5e9;
+      --accent-2: #22c55e;
+      --accent-3: #a855f7;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #1f2937;
+      --danger: #f97373;
+      --ok: #4ade80;
+      --code-bg: #020617;
+      --mono: "Fira Code", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.9);
+      --radius-lg: 1.1rem;
+      --radius-md: 0.8rem;
+      --radius-pill: 999px;
+      --transition-fast: 160ms ease-out;
+      --transition-med: 220ms ease-out;
+    }
 
     * {
       box-sizing: border-box;
@@ -29,142 +45,438 @@
       scroll-behavior: smooth;
     }
 
-        body {
-            background-color: var(--bg);
-            color: var(--text);
-            font-family: var(--font);
-            font-size: 14px;
-            line-height: 1.6;
-            letter-spacing: -0.01em;
-            display: flex;
-        }
+    body {
+      min-height: 100vh;
+    }
 
-        /* Sidebar Navigation */
-        aside {
-            width: 260px;
-            height: 100vh;
-            position: fixed;
-            top: 0;
-            left: 0;
-            border-right: 1px solid var(--border);
-            padding: 2.5rem 1.5rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            background: var(--bg);
-            z-index: 10;
-        }
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 4rem;
+    }
 
-        .logo-area a {
-            font-family: var(--font-mono);
-            font-weight: 700;
-            color: var(--text-bright);
-            text-decoration: none;
-            font-size: 1.1rem;
-            letter-spacing: -0.03em;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
+    /* Top nav */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(18px);
+      background: linear-gradient(to bottom, rgba(2, 6, 23, 0.96), rgba(2, 6, 23, 0.85), transparent);
+      border-bottom: 1px solid rgba(15, 23, 42, 0.9);
+      margin: -1.5rem -1.25rem 1.5rem;
+      padding: 0.6rem 1.25rem 0.5rem;
+    }
 
-        .logo-area span {
-            font-weight: 300;
-            color: #444;
-            font-size: 0.8rem;
-        }
+    .top-nav-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
 
-        nav {
-            margin-top: 3rem;
-            flex-grow: 1;
-        }
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
 
-        nav ul {
-            list-style: none;
-        }
+    .nav-logo {
+      width: 26px;
+      height: 26px;
+      border-radius: 10px;
+      background: conic-gradient(from 210deg, #38bdf8, #22c55e, #a855f7, #38bdf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow:
+        0 0 0 1px rgba(15, 23, 42, 0.9),
+        0 0 25px rgba(56, 189, 248, 0.6);
+    }
 
-        nav li {
-            margin-bottom: 0.75rem;
-        }
+    .nav-logo-inner {
+      width: 18px;
+      height: 18px;
+      border-radius: 7px;
+      background: radial-gradient(circle at 30% 0, #e5e7eb 0, #020617 60%);
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.9);
+    }
 
-        nav a {
-            color: var(--text);
-            text-decoration: none;
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            transition: color 0.2s ease, transform 0.2s ease;
-            display: inline-block;
-        }
+    .nav-title {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
 
-        nav a:hover {
-            color: var(--text-bright);
-            transform: translateX(3px);
-        }
+    .nav-title-main {
+      font-size: 0.9rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #e5e7eb;
+    }
 
-        .sidebar-footer a {
-            font-family: var(--font-mono);
-            font-size: 0.8rem;
-            color: #555;
-            text-decoration: none;
-            transition: color 0.2s ease;
-        }
+    .nav-title-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
 
-        .sidebar-footer a:hover {
-            color: var(--text-bright);
-        }
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+    }
 
-        /* Main Content Layout */
-        main {
-            margin-left: 260px;
-            max-width: 900px;
-            width: calc(100% - 260px);
-            padding: 4rem 4rem 8rem 4rem;
-        }
+    .nav-link {
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(30, 64, 175, 0.7);
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95));
+      color: #cbd5f5;
+      text-decoration: none;
+      transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
+    }
 
-        section {
-            margin-bottom: 5rem;
-            animation: fadeIn 0.6s ease coordinates;
-        }
+    .nav-link:hover {
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 1), rgba(15, 23, 42, 0.98));
+      border-color: rgba(56, 189, 248, 0.9);
+      color: #e5f3ff;
+      transform: translateY(-1px);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+    }
 
-        h1, h2, h3 {
-            color: var(--text-bright);
-            font-weight: 600;
-            letter-spacing: -0.02em;
-        }
+    @media (max-width: 720px) {
+      .top-nav-inner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
 
-        h1 {
-            font-size: 2.2rem;
-            margin-bottom: 0.5rem;
-        }
+    /* Header */
+    header {
+      margin-bottom: 2.2rem;
+      padding: 1.8rem 1.7rem 1.5rem;
+      border-radius: 1.3rem;
+      background:
+        radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.18), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.18), transparent 55%),
+        linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+      border: 1px solid rgba(30, 64, 175, 0.9);
+      box-shadow: var(--shadow-soft);
+      position: relative;
+      overflow: hidden;
+    }
 
-        .subtitle {
-            font-family: var(--font-mono);
-            color: #555;
-            margin-bottom: 3rem;
-            font-size: 0.9rem;
-        }
+    header::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 10% 0, rgba(248, 250, 252, 0.12), transparent 55%),
+        radial-gradient(circle at 90% 100%, rgba(56, 189, 248, 0.12), transparent 55%);
+      mix-blend-mode: screen;
+      opacity: 0.7;
+      pointer-events: none;
+    }
 
-        h2 {
-            font-size: 1.3rem;
-            margin-bottom: 1.5rem;
-            font-family: var(--font-mono);
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 0.5rem;
-        }
+    .header-main {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.4fr);
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
 
-        p {
-            margin-bottom: 1.25rem;
-        }
+    @media (max-width: 900px) {
+      .header-main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
 
-        /* Technical Highlight Elements */
-        code {
-            font-family: var(--font-mono);
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 0.15rem 0.4rem;
-            border-radius: 3px;
-            color: #dddddd;
-            font-size: 0.85rem;
-        }
+    .title-block {
+      animation: fadeUp 600ms var(--transition-med) both;
+    }
+
+    .title-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      padding: 0.25rem 0.7rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(226, 232, 240, 0.4);
+      background: rgba(15, 23, 42, 0.7);
+      color: #e5e7eb;
+    }
+
+    .title-pill-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.35);
+    }
+
+    .title-block h1 {
+      margin: 0.4rem 0 0.2rem;
+      font-size: clamp(2.1rem, 3vw, 2.6rem);
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .title-gradient {
+      background: linear-gradient(to right, #e5e7eb, #bae6fd, #a5b4fc);
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+
+    .subtitle {
+      margin-top: 0.4rem;
+      color: #cbd5f5;
+      font-size: 0.95rem;
+      max-width: 34rem;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.9rem;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      background: rgba(15, 23, 42, 0.9);
+      color: #e5e7eb;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      white-space: nowrap;
+      transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+    }
+
+    .badge:hover {
+      transform: translateY(-1px);
+      border-color: rgba(56, 189, 248, 0.9);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 1), rgba(15, 23, 42, 0.98));
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.35);
+    }
+
+    .header-meta {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+      min-width: 260px;
+      animation: fadeUp 650ms var(--transition-med) both;
+    }
+
+    @media (max-width: 900px) {
+      .header-meta {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .header-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 520px) {
+      .header-meta {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .meta-card {
+      padding: 0.8rem 0.9rem;
+      border-radius: 0.9rem;
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+      border: 1px solid rgba(30, 64, 175, 0.9);
+      font-size: 0.8rem;
+      position: relative;
+      overflow: hidden;
+      transition: transform var(--transition-med), box-shadow var(--transition-med), border-color var(--transition-med), background var(--transition-med);
+    }
+
+    .meta-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.18), transparent 55%);
+      opacity: 0;
+      transition: opacity var(--transition-med);
+      pointer-events: none;
+    }
+
+    .meta-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.95);
+      border-color: rgba(56, 189, 248, 0.9);
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 1), rgba(2, 6, 23, 1));
+    }
+
+    .meta-card:hover::before {
+      opacity: 1;
+    }
+
+    .meta-label {
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: #9ca3af;
+      font-size: 0.7rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .meta-value {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: #e5e7eb;
+    }
+
+    .meta-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-pill);
+      background: rgba(22, 163, 74, 0.12);
+      color: #bbf7d0;
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      font-size: 0.7rem;
+      margin-top: 0.25rem;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.4rem;
+    }
+
+    .pill {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+      color: #e5e7eb;
+    }
+
+    .pill-strong {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+    }
+
+    /* Layout */
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 2.1fr) minmax(0, 1.4fr);
+      gap: 1.75rem;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    section {
+      margin-bottom: 1.75rem;
+      background: radial-gradient(circle at top, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(15, 23, 42, 0.95);
+      padding: 1.25rem 1.3rem 1.3rem;
+      box-shadow: var(--shadow-soft);
+      position: relative;
+      overflow: hidden;
+      animation: fadeUp 700ms var(--transition-med) both;
+    }
+
+    section::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.08), transparent 55%);
+      opacity: 0;
+      transition: opacity var(--transition-med);
+      pointer-events: none;
+    }
+
+    section:hover::before {
+      opacity: 1;
+    }
+
+    h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.05rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    h2 span {
+      width: 8px;
+      height: 18px;
+      border-radius: 999px;
+      background: linear-gradient(to bottom, var(--accent), var(--accent-2));
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+    }
+
+    h3 {
+      margin: 1rem 0 0.4rem;
+      font-size: 0.95rem;
+      color: #e5e7eb;
+    }
+
+    p {
+      margin: 0.25rem 0 0.4rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    ul {
+      margin: 0.35rem 0 0.4rem 1.1rem;
+      padding: 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    li {
+      margin-bottom: 0.25rem;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      background: var(--code-bg);
+      padding: 0.1rem 0.3rem;
+      border-radius: 0.3rem;
+      border: 1px solid rgba(30, 64, 175, 0.7);
+      color: #e5e7eb;
+    }
 
     pre {
       margin: 0.5rem 0;
@@ -197,73 +509,114 @@
       color: #e5e7eb;
     }
 
-        .grid-two {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            margin: 2rem 0;
-        }
+    .grid-two {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.75rem;
+    }
 
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 1.5rem;
-            border-radius: 4px;
-            transition: border-color 0.2s ease, transform 0.2s ease;
-        }
+    @media (max-width: 700px) {
+      .grid-two {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
 
-        .card:hover {
-            border-color: #333;
-            transform: translateY(-2px);
-        }
+    .troubleshoot-item {
+      margin-bottom: 0.6rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px dashed rgba(31, 41, 55, 0.9);
+    }
 
-        .card h3 {
-            font-size: 0.95rem;
-            font-family: var(--font-mono);
-            margin-bottom: 0.5rem;
-        }
+    .troubleshoot-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
 
-        .card p {
-            font-size: 0.85rem;
-            margin-bottom: 0;
-            color: #777;
-        }
+    .status-ok {
+      color: #bbf7d0;
+    }
 
-        /* System Metrics Table */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 2rem 0;
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-        }
+    .status-bad {
+      color: #fecaca;
+    }
 
-        th, td {
-            text-align: left;
-            padding: 0.75rem;
-            border-bottom: 1px solid var(--border);
-        }
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.4rem;
+    }
 
-        th {
-            color: var(--text-bright);
-            font-weight: 500;
-        }
+    .tag {
+      font-size: 0.75rem;
+      padding: 0.18rem 0.55rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.96);
+      color: #e5e7eb;
+    }
 
-        td {
-            color: var(--text);
-        }
+    .tag-accent {
+      border-color: rgba(56, 189, 248, 0.9);
+      background: rgba(15, 23, 42, 0.98);
+    }
 
-        /* Subtle Fade-in Animation */
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(6px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
+    .timeline {
+      margin-top: 0.4rem;
+      border-left: 1px solid rgba(55, 65, 81, 0.9);
+      padding-left: 0.9rem;
+    }
+
+    .timeline-item {
+      margin-bottom: 0.6rem;
+      position: relative;
+    }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -0.95rem;
+      top: 0.25rem;
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.25);
+    }
+
+    .timeline-label {
+      font-size: 0.8rem;
+      color: #e5e7eb;
+    }
+
+    .timeline-desc {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #6b7280;
+    }
+
+    footer span {
+      color: #e5e7eb;
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
 
     .fade-in-delayed {
       animation: fadeUp 750ms var(--transition-med) both;
@@ -271,18 +624,26 @@
   </style>
 </head>
 <body>
-
-    <aside>
-        <div class="logo-area">
-            <a href="#">Iris-Lite <span>v1.0</span></a>
+  <div class="page">
+    <div class="top-nav">
+      <div class="top-nav-inner">
+        <div class="nav-left">
+          <div class="nav-logo">
+            <div class="nav-logo-inner"></div>
+          </div>
+          <div class="nav-title">
+            <div class="nav-title-main">Iris_Lite</div>
+            <div class="nav-title-sub">Intelligent camera pipeline for Raspberry Pi 4B</div>
+          </div>
         </div>
-        <nav>
-            <ul>
-                <li><a href="#architecture">01 // Architecture</a></li>
-                <li><a href="#detection">02 // Event Filtration</a></li>
-                <li><a href="#compression">03 // P.E.L.I.C.A.N.</a></li>
-                <li><a href="#metrics">04 // Performance Data</a></li>
-            </ul>
+        <nav class="nav-links">
+          <a href="#overview" class="nav-link">Overview</a>
+          <a href="#requirements" class="nav-link">Requirements</a>
+          <a href="#getting-started" class="nav-link">Getting started</a>
+          <a href="#how-it-works" class="nav-link">Architecture</a>
+          <a href="#project-structure" class="nav-link">Project layout</a>
+          <a href="#troubleshooting" class="nav-link">Troubleshooting</a>
+          <a href="#license" class="nav-link">License</a>
         </nav>
       </div>
     </div>
@@ -352,85 +713,384 @@
     </header>
 
     <main>
-        <section id="hero">
-            <h1>Iris-Lite</h1>
-            <div class="subtitle">Perceptual Edge Surveillance Architecture</div>
-            <p>An intelligent, on-device security monitoring system configured for resource-constrained hardware. Iris-Lite replaces persistent cloud streaming with an event-driven, resource-aware pipeline running entirely on local shared memory.</p>
-        </section>
+      <!-- LEFT COLUMN -->
+      <div>
+        <section id="overview">
+          <h2><span></span>Overview</h2>
+          <p>
+            <strong>Iris_Lite</strong> is a developer‑grade intelligent camera system designed for the Raspberry Pi 4B.
+            Instead of dumping raw footage to disk, it continuously captures 1080p frames into a shared memory buffer,
+            then selectively compresses only the interesting segments based on a multi‑signal trigger pipeline.
+          </p>
+          <p>
+            The system is built around three core ideas:
+          </p>
+          <ul>
+            <li><strong>Always‑on capture</strong> — a 5‑minute rolling buffer at 24 FPS stored in shared memory.</li>
+            <li><strong>Event‑driven recording</strong> — motion, audio, zone overlap, and GPIO events decide when to save.</li>
+            <li><strong>Importance‑aware compression</strong> — a C++ engine scores each frame and dynamically adjusts CRF.</li>
+          </ul>
+          <p>
+            The result is a camera that behaves more like a sensor fusion system than a dumb recorder—ideal for
+            security, monitoring, or research setups where context matters more than raw uptime.
+          </p>
 
-        <section id="architecture">
-            <h2>01 // Architecture</h2>
-            <p>The system utilizes a multi-tiered pipeline executed on a Raspberry Pi 4B. By managing frames entirely within a sliding 5-minute Shared Memory (SHM) buffer, it bypasses continuous disk I/O overhead and avoids premature flash storage cell wear.</p>
-            
-            <div class="grid-two">
-                <div class="card">
-                    <h3>Shared Memory Ring</h3>
-                    <p>Provides O(1) frame access queries via explicit RAM caching, protecting backing media from continuous raw writes.</p>
-                </div>
-                <div class="card">
-                    <h3>Carbon-Aware Governance</h3>
-                    <p>Monitors regional grid parameters to transition system dependencies adaptively based on energy footprints.</p>
-                </div>
+          <div class="grid-two" style="margin-top:0.7rem;">
+            <div>
+              <h3>Key capabilities</h3>
+              <ul>
+                <li><strong>1080p MJPG ingest</strong> via V4L2 with real‑time overlays.</li>
+                <li><strong>Shared memory frame buffer</strong> with timestamp indexing.</li>
+                <li><strong>Motion detection</strong> using luminance shifts + CNT background subtraction.</li>
+                <li><strong>Audio classification</strong> via TFLite (screams, glass, gunshots, etc.).</li>
+                <li><strong>Zone‑based triggers</strong> using HSV grass segmentation + KNN background subtraction.</li>
+                <li><strong>GPIO integration</strong> for door and motion sensors.</li>
+              </ul>
             </div>
+            <div>
+              <h3>Design goals</h3>
+              <ul>
+                <li><strong>Low overhead</strong> on Raspberry Pi 4B using hardware H.264 where possible.</li>
+                <li><strong>Modular processes</strong> that can be debugged and replaced independently.</li>
+                <li><strong>Deterministic behavior</strong> via explicit timestamps and shared memory indices.</li>
+                <li><strong>Developer‑friendly</strong> Python + C++ codebase with clear separation of concerns.</li>
+              </ul>
+            </div>
+          </div>
         </section>
 
-        <section id="detection">
-            <h2>02 // Event Filtration</h2>
-            <p>Iris-Lite evaluates scene activity through two isolation segments before promoting arrays to full storage commits:</p>
-            <pre><code>// Dual-Tier Spatial Isolation Pipeline
-Tier_1: Always-On Background Subtraction (CNT)
-        └── IF Contour Threshold Crossed -> Activate Tier_2
-Tier_2: High-Context Motion Entropy Analysis
-        └── Verification: Spatial-Temporal Consistency Filter (50-Frame validation)</code></pre>
-            <p>An on-board LiteRT convolutional network concurrently reviews ambient acoustic waveforms to scan for high-risk acoustic event anomalies (e.g., glass breakage, crashing) above a hard thresholds of <code>-21.9 dBFS</code>.</p>
+        <section id="requirements">
+          <h2><span></span>System requirements</h2>
+
+          <h3>Hardware</h3>
+          <ul>
+            <li><strong>Raspberry Pi 4B</strong> (2GB RAM or higher recommended).</li>
+            <li><strong>USB camera</strong> supporting MJPG at 1920×1080 via V4L2.</li>
+            <li><strong>USB microphone</strong> for audio classification.</li>
+            <li><strong>GPIO sensors</strong>:
+              <ul>
+                <li>Door sensor on pin <code>17</code>.</li>
+                <li>Motion sensor on pin <code>27</code>.</li>
+              </ul>
+            </li>
+            <li><strong>Storage</strong> mounted at <code>/clipDrive/clips/</code> (microSD or external drive).</li>
+          </ul>
+
+          <h3>Software</h3>
+          <ul>
+            <li><strong>OS:</strong> Raspberry Pi OS (Bullseye or later, 64‑bit recommended).</li>
+            <li><strong>Python:</strong> 3.12.7.</li>
+            <li><strong>C++:</strong> GCC 11+ with C++20 (<code>std::format</code> support).</li>
+            <li><strong>OpenCV:</strong> 4.x with <code>bgsegm</code> (via <code>opencv-contrib-python</code>).</li>
+            <li><strong>FFmpeg:</strong> with <code>h264_v4l2m2m</code> hardware encoder support.</li>
+            <li><strong>Python packages:</strong> <code>opencv-contrib-python</code>, <code>numpy</code>, <code>pyaudio</code>, <code>ai-edge-litert</code>, <code>RPi.GPIO</code>.</li>
+          </ul>
+
+          <div class="callout">
+            <strong>Note:</strong> On non‑Linux systems, GPIO is automatically disabled so you can still develop and
+            test the rest of the pipeline without hardware sensors.
+          </div>
         </section>
 
-        <section id="compression">
-            <h2>03 // P.E.L.I.C.A.N. Engine</h2>
-            <p>The <em>Perceptual Edge Lightweight Intelligent Compression and Adaptive Network</em> dictates frame prioritization. Instead of processing raw arrays uniformly, it optimizes stream density relative to historical scene context metrics.</p>
-            <pre><code>[Input Stream] ──> Dual Resolution Matrix (1080p / 320x180)
-                       │
-                       ├──> Feature Density Extraction (Edge/Motion)
-                       └──> Real-time Quantization Control (Dynamic CRF)</code></pre>
-            <p>When the internal system governor reports elevated thermal or processing strain, quantization thresholds scale to guarantee linear throughput speeds without compromising tracking cohesion during event bursts.</p>
+        <section id="getting-started">
+          <h2><span></span>Getting started</h2>
+
+          <h3>1. Install dependencies</h3>
+          <pre><code>sudo apt update &amp;&amp; sudo apt upgrade -y
+sudo apt install -y ffmpeg libopencv-dev python3-pip cmake build-essential
+
+pip3 install opencv-contrib-python numpy pyaudio ai-edge-litert RPi.GPIO</code></pre>
+
+          <h3>2. Clone and launch</h3>
+          <pre><code>git clone https://github.com/AbhiramV010/Iris_Lite.git
+cd Iris_Lite
+bash IRIS_Lite.sh</code></pre>
+
+          <p>
+            The launcher opens six <code>uxterm</code> windows and shows a loading bar while each process starts.
+            All six processes must be running for the system to function correctly.
+          </p>
+
+          <h3>3. Configure storage</h3>
+          <p>
+            Ensure the clips directory exists and is writable:
+          </p>
+          <pre><code>sudo mkdir -p /clipDrive/clips/
+sudo chown &lt;your-user&gt; /clipDrive/clips/</code></pre>
+          <p>
+            Clips are saved as timestamped <code>.mp4</code> files:
+          </p>
+          <pre><code>iris_lite--YYYY-MM-DD_HH-MM-SS.mp4</code></pre>
+
+          <div class="callout">
+            <strong>Tip:</strong> Run the launcher from a regular Bash shell (not zsh) as
+            <code>IRIS_Lite.sh</code> is written for Bash and assumes a POSIX‑style environment.
+          </div>
+
+          <h3>4. Typical dev workflow</h3>
+          <div class="timeline">
+            <div class="timeline-item">
+              <div class="timeline-label"><strong>Step 1 · Hardware sanity check</strong></div>
+              <div class="timeline-desc">
+                Verify the camera appears as <code>/dev/video0</code> and the microphone is detected by ALSA.
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-label"><strong>Step 2 · Launch IRIS_Lite.sh</strong></div>
+              <div class="timeline-desc">
+                Confirm all six terminal windows show healthy logs (no repeated exceptions or shared memory errors).
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-label"><strong>Step 3 · Trigger events</strong></div>
+              <div class="timeline-desc">
+                Walk into frame, make noise, or toggle GPIO sensors and watch for capture events in the logs.
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-label"><strong>Step 4 · Inspect clips</strong></div>
+              <div class="timeline-desc">
+                Open the generated <code>.mp4</code> files in <code>/clipDrive/clips/</code> and verify quality vs. motion.
+              </div>
+            </div>
+          </div>
         </section>
 
-        <section id="metrics">
-            <h2>04 // Performance Benchmarks</h2>
-            <p>Telemetry metrics verified under multi-process constraints over a standard evaluation interval:</p>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Subsystem Component</th>
-                        <th>Mean CPU Profile</th>
-                        <th>Memory Boundaries</th>
-                        <th>Thermal Profile</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Zone Monitoring Loop</td>
-                        <td>34% - 38%</td>
-                        <td>--</td>
-                        <td>--</td>
-                    </tr>
-                    <tr>
-                        <td>Audio Processing Loop</td>
-                        <td>16.1% (Peak)</td>
-                        <td>--</td>
-                        <td>--</td>
-                    </tr>
-                    <tr>
-                        <td>System Aggregated Target</td>
-                        <td>94.28% (Median)</td>
-                        <td>1.5 GB - 1.8 GB</td>
-                        <td>68°C (Stabilized)</td>
-                    </tr>
-                </tbody>
-            </table>
+        <section id="how-it-works">
+          <h2><span></span>Architecture and data flow</h2>
+          <p>
+            Iris_Lite is composed of six parallel processes that communicate via POSIX shared memory and a
+            socket‑based event bus on <code>127.0.0.1:8989</code>. Each process has a single responsibility, which
+            makes the system easier to reason about and debug.
+          </p>
+
+          <h3>High‑level pipeline</h3>
+          <ul>
+            <li><strong>Capture:</strong> <code>startCamera.py</code> streams MJPG frames into shared memory.</li>
+            <li><strong>Buffer:</strong> <code>main.py</code> maintains a 5‑minute rolling buffer of JPEG frames.</li>
+            <li><strong>Triggers:</strong> <code>detector_pipeline.py</code>, <code>listener.py</code>, <code>zone_monitor.py</code>, and GPIO events emit <code>CaptureClass</code> objects.</li>
+            <li><strong>Compression:</strong> C++ engine reads the relevant frame window and encodes to H.264 with dynamic CRF.</li>
+          </ul>
+
+          <h3>Core processes</h3>
+          <ul>
+            <li><strong>startCamera.py</strong>  
+              Captures 1080p MJPG frames via V4L2 and writes them into a named shared memory block
+              (<code>iris_live_frame</code>). It also renders a real‑time motion difference overlay on a configurable
+              bottom‑left zone so you can visually confirm motion detection.
+            </li>
+            <li><strong>main.py</strong>  
+              Maintains a rolling 5‑minute buffer at 24 FPS (7,200 slots) using JPEG‑compressed frames (quality 25).
+              It listens on the event bus for <code>CaptureClass</code> objects and maps timestamps to buffer indices
+              for the C++ compression engine via the <code>iris_concern_indices</code> shared memory block.
+            </li>
+            <li><strong>detector_pipeline.py</strong>  
+              Runs a two‑tier trigger: luminance shift detection plus CNT background subtraction. Events that exceed
+              an entropy threshold of <code>3.0</code> and show centroid movement over 50 consecutive frames send a
+              <code>CaptureClass</code> with a ±5 second window around the event.
+            </li>
+            <li><strong>listener.py</strong>  
+              Samples audio at 16 kHz, builds mel spectrograms, and runs inference with a bundled TFLite model.
+              It classifies:
+              <ul>
+                <li>Screaming</li>
+                <li>Gunshots</li>
+                <li>Glass breaking</li>
+                <li>Aggressive knocking</li>
+                <li>Car screech</li>
+                <li>Dog barking</li>
+                <li>Ambience</li>
+              </ul>
+              Any concerning category triggers a capture with a configurable pre‑ and post‑event window.
+            </li>
+            <li><strong>zone_monitor.py</strong>  
+              Uses KNN background subtraction and HSV‑based grass segmentation to detect when a foreground object
+              overlaps a defined ground zone. A capture is triggered after 2+ seconds of sustained overlap to avoid
+              noise from transient artifacts.
+            </li>
+            <li><strong>sensor_helper.py</strong>  
+              Wraps GPIO access (door sensor on pin 17, motion sensor on pin 27). On non‑Linux systems, GPIO is
+              automatically disabled for easier development. GPIO state is included in every <code>CaptureClass</code>.
+            </li>
+          </ul>
+
+          <h3>CaptureClass payload</h3>
+          <p>
+            When any trigger fires, it emits a <code>CaptureClass</code> instance over the event bus. At a high level,
+            this object contains:
+          </p>
+          <ul>
+            <li><strong>start_time / end_time</strong> — timestamps defining the capture window.</li>
+            <li><strong>trigger_type</strong> — e.g., <code>"motion"</code>, <code>"audio"</code>, <code>"zone"</code>, <code>"gpio"</code>.</li>
+            <li><strong>importance_hint</strong> — optional hint for the compression engine (e.g., “high risk”).</li>
+            <li><strong>gpio_state</strong> — door/motion sensor state at the time of the event.</li>
+          </ul>
+          <p>
+            <code>main.py</code> converts these timestamps into buffer indices and writes them into shared memory for
+            the C++ compression engine to consume.
+          </p>
         </section>
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div>
+        <section id="project-structure" class="fade-in-delayed">
+          <h2><span></span>Project structure</h2>
+          <p>High‑level layout of the repository:</p>
+          <pre><code>Iris_Lite/
+├── Compression/
+│   ├── include/
+│   │   ├── CompressionEngine.hpp
+│   │   ├── CompressionPolicy.hpp
+│   │   ├── H264Encoder.hpp
+│   │   ├── ImportanceEngine.hpp
+│   │   ├── SharedFrameBuffer.hpp
+│   │   └── Config.hpp
+│   ├── src/
+│   │   ├── main.cpp              # Entry point, listens for events via shared memory
+│   │   ├── CompressionEngine.cpp # Orchestrates frame analysis and encoding
+│   │   ├── CompressionPolicy.cpp # Frame drop and CRF decisions
+│   │   ├── H264Encoder.cpp       # FFmpeg pipe wrapper
+│   │   └── ImportanceEngine.cpp  # Motion, edge, and face scoring
+│   └── CMakeLists.txt
+├── clips/
+├── startCamera.py
+├── main.py
+├── detector_pipeline.py
+├── listener.py
+├── zone_monitor.py
+├── captureinfo.py
+├── sensor_helper.py
+├── sound_model.tflite
+├── log/
+│   └── logger.sh
+├── IRIS_Lite.sh
+└── README.md</code></pre>
+
+          <h3>Compression pipeline (C++)</h3>
+          <p>
+            The C++ engine listens for events via the <code>iris_concern_indices</code> shared memory block written
+            by <code>main.py</code>. On each event, it:
+          </p>
+          <ul>
+            <li>Extracts the relevant frame window from the shared buffer.</li>
+            <li>Scores each frame using <strong>ImportanceEngine</strong>:
+              <ul>
+                <li>Motion: 45%.</li>
+                <li>Edge density (Sobel): 35%.</li>
+                <li>Face detection (Haar cascade): 20%.</li>
+              </ul>
+              computed at 320×180 resolution for efficiency.
+            </li>
+            <li>Applies exponential smoothing:
+              <code>0.85 * previous + 0.15 * raw</code> to avoid erratic quality jumps.</li>
+            <li>Uses <strong>CompressionPolicy</strong> to:
+              <ul>
+                <li>Decide whether to drop a frame (importance + momentum vs threshold 0.55).</li>
+                <li>Compute a dynamic CRF in the range <code>16–36</code>.</li>
+              </ul>
+            </li>
+            <li>Streams kept frames to FFmpeg via pipe using <code>h264_v4l2m2m</code> on Linux, falling back to
+              <code>libx264 -preset ultrafast</code> otherwise.</li>
+          </ul>
+          <p>
+            CRF segments are only re‑opened when the computed CRF shifts by ≥5 from the current value, reducing
+            fragmentation and keeping clips clean and contiguous.
+          </p>
+
+          <div class="tag-row">
+            <span class="tag tag-accent">Importance‑aware encoding</span>
+            <span class="tag">Hardware acceleration</span>
+            <span class="tag">Shared memory IPC</span>
+            <span class="tag">FFmpeg pipe integration</span>
+          </div>
+        </section>
+
+        <section id="troubleshooting" class="fade-in-delayed">
+          <h2><span></span>Troubleshooting</h2>
+
+          <div class="troubleshoot-item">
+            <h3>Camera not detected</h3>
+            <p>
+              Make sure the camera is visible as <code>/dev/video0</code> and supports MJPG at 1920×1080:
+            </p>
+            <pre><code>v4l2-ctl --list-formats-ext</code></pre>
+            <p>
+              If MJPG at 1080p is missing, lower the resolution or use a different camera.
+            </p>
+          </div>
+
+          <div class="troubleshoot-item">
+            <h3>Shared memory error on startup</h3>
+            <p>
+              If <code>startCamera.py</code> crashes, stale shared memory blocks may remain. Clear them with:
+            </p>
+            <pre><code>python3 -c "from multiprocessing import shared_memory;
+shared_memory.SharedMemory('iris_live_frame').unlink()"</code></pre>
+            <p>
+              Repeat for any other named blocks if necessary (e.g., <code>iris_concern_indices</code>).
+            </p>
+          </div>
+
+          <div class="troubleshoot-item">
+            <h3>Compression engine not encoding</h3>
+            <p>
+              Confirm the clips directory exists and FFmpeg supports the hardware encoder:
+            </p>
+            <pre><code>ls /clipDrive/clips/
+ffmpeg -codecs | grep h264_v4l2m2m</code></pre>
+            <p>
+              If the hardware encoder is missing, the engine will fall back to <code>libx264</code>, which is slower
+              but still functional.
+            </p>
+          </div>
+
+          <div class="troubleshoot-item">
+            <h3>GPIO errors on non‑Linux systems</h3>
+            <p>
+              On non‑Linux platforms, <code>sensor_helper.py</code> automatically disables GPIO. This is expected
+              during development on Windows or macOS and does not affect the rest of the pipeline.
+            </p>
+          </div>
+
+          <div class="troubleshoot-item">
+            <h3>Audio device not found</h3>
+            <p>
+              <code>listener.py</code> prefers USB or hardware audio devices, then falls back to the system default.
+              List available devices with:
+            </p>
+            <pre><code>arecord -l</code></pre>
+            <p>
+              If no devices are listed, check your microphone connection and ALSA configuration.
+            </p>
+          </div>
+        </section>
+
+        <section id="license" class="fade-in-delayed">
+          <h2><span></span>License & credits</h2>
+          <p>
+            Iris_Lite is licensed under <strong>CC BY‑NC‑SA 4.0</strong>.
+          </p>
+          <ul>
+            <li><strong>Attribution required</strong> for any reuse or modification.</li>
+            <li><strong>Non‑commercial only</strong>—no commercial use without separate permission.</li>
+            <li><strong>Share‑alike</strong>—derivatives must use the same license.</li>
+          </ul>
+
+          <h3>Acknowledgements</h3>
+          <ul>
+            <li><strong>Macmeet B</strong> — for lending the Raspberry Pi 4B.</li>
+            <li><strong>Mr. Hadley</strong> — for guidance and support throughout development.</li>
+          </ul>
+        </section>
+      </div>
     </main>
 
+    <footer>
+      <p>
+        Built as a <span>Computer Science Passion Project</span> by Abhiram V &amp; Shreyash T.
+      </p>
+    </footer>
+  </div>
 </body>
 </html>
