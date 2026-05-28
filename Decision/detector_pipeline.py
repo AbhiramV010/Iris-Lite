@@ -113,8 +113,8 @@ try:
             last_centroid = None
             persistence_count = 0 
 
-        try: cv2.imshow("Two-tiered detection", vis)
-        except: warnings.warn("No display detected, will run headlessly")
+        # try: cv2.imshow("Two-tiered detection", vis)
+        # except: warnings.warn("No display detected, will run headlessly")
 
         if cv2.waitKey(1) & 0xFF == ord('x'): break
 
