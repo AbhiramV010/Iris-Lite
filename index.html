@@ -5,46 +5,288 @@
   <title>Iris-Lite</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="An event-driven surveillance prototype on a Raspberry Pi 4B. Detection, buffering and adaptive H.264 compression, all on-device." />
-  <link rel="stylesheet" href="assets/site.css" />
+
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --panel: #101317;
+      --panel-2: #0d1014;
+      --line: #212630;
+      --line-soft: #191d25;
+
+      --text: #d8dce2;
+      --head: #f2f4f7;
+      --muted: #8a929d;
+
+      --accent: #7ab8f5;
+      --accent-dim: #43698f;
+
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 0 1.25rem 6rem;
+    }
+
+    /* ---------- nav ---------- */
+
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(11, 13, 16, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .top-nav-inner {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 0.6rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .wordmark {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      color: var(--head);
+      letter-spacing: 0.02em;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+
+    .nav-links a:hover { color: var(--accent); }
+
+    /* ---------- header ---------- */
+
+    header {
+      padding: 3.5rem 0 2.5rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      font-size: 2.1rem;
+      line-height: 1.2;
+      margin: 0 0 0.75rem;
+      color: var(--head);
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    .standfirst {
+      font-size: 1.08rem;
+      color: var(--text);
+      margin: 0 0 1.5rem;
+      max-width: 42rem;
+    }
+
+    .facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 0.5rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+    }
+
+    .fact {
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      padding: 0.2rem 0.5rem;
+      color: var(--muted);
+    }
+
+    /* ---------- sections ---------- */
+
+    section {
+      padding-top: 3rem;
+    }
+
+    h2 {
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--accent);
+      margin: 0 0 1rem;
+      font-weight: 500;
+    }
+
+    h3 {
+      font-size: 1rem;
+      color: var(--head);
+      margin: 2rem 0 0.5rem;
+      font-weight: 600;
+    }
+
+    p { margin: 0 0 1rem; }
+
+    a { color: var(--accent); }
+
+    ul { padding-left: 1.1rem; margin: 0 0 1rem; }
+    li { margin-bottom: 0.3rem; }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      color: var(--head);
+      background: var(--panel);
+      border: 1px solid var(--line-soft);
+      border-radius: 3px;
+      padding: 0.05rem 0.3rem;
+      white-space: nowrap;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    /* ---------- tables ---------- */
+
+    .scroll { overflow-x: auto; margin: 0 0 1rem; }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.88rem;
+      min-width: 30rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.5rem 0.9rem 0.5rem 0;
+      border-bottom: 1px solid var(--line-soft);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.75rem;
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom-color: var(--line);
+    }
+
+    td:first-child { color: var(--head); }
+
+    td.num, th.num {
+      font-family: var(--mono);
+      text-align: right;
+      padding-right: 0;
+    }
+
+    /* ---------- process list ---------- */
+
+    .procs { margin: 0 0 1rem; }
+
+    .proc {
+      display: grid;
+      grid-template-columns: 12rem 1fr;
+      gap: 0 1.25rem;
+      padding: 0.7rem 0;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .proc-name {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      color: var(--head);
+    }
+
+    .proc-desc { font-size: 0.93rem; }
+
+    /* ---------- pull quote / limits ---------- */
+
+    .limits {
+      border-left: 2px solid var(--accent-dim);
+      padding: 0.15rem 0 0.15rem 1.1rem;
+      color: var(--text);
+    }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    footer p { margin-bottom: 0.6rem; }
+
+    @media (max-width: 34rem) {
+      h1 { font-size: 1.7rem; }
+      .proc { grid-template-columns: 1fr; gap: 0.15rem; }
+      .nav-links { gap: 0.75rem; }
+    }
+  </style>
 </head>
 
 <body>
 
   <div class="top-nav">
     <div class="top-nav-inner">
-      <a class="wordmark" href="index.html">iris-lite</a>
+      <span class="wordmark">iris-lite</span>
       <nav class="nav-links">
-        <a href="index.html" class="active">Overview</a>
-        <a href="architecture.html">Architecture</a>
-        <a href="detection.html">Detection</a>
-        <a href="compression.html">Compression</a>
-        <a href="hardware.html">Hardware</a>
-        <a href="results.html">Results</a>
-        <a href="install.html">Install</a>
-        <a href="reference.html">Reference</a>
+        <a href="#idea">Idea</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#detection">Detection</a>
+        <a href="#compression">Compression</a>
+        <a href="#results">Results</a>
+        <a href="#power">Power</a>
+        <a href="#limits">Limits</a>
       </nav>
     </div>
   </div>
 
   <div class="page">
 
-    <div class="page-head">
-      <p class="eyebrow">STEAM ICAC 2026 &middot; Computer Science</p>
+    <header>
       <h1>Iris-Lite</h1>
-      <p class="lede">
+      <p class="standfirst">
         A surveillance prototype that records nothing until something happens. Six processes
-        share a five-minute video buffer in RAM; when a detector fires, a C++ engine pulls that
-        window out and encodes it to H.264, spending bitrate on the frames that earned it.
+        share a five-minute video buffer in RAM; when a detector fires, a C++ engine pulls
+        that window out and encodes it to H.264, spending bitrate on the frames that earned it.
         Everything runs on one Raspberry Pi 4B, and nothing leaves the device.
       </p>
-
-      <dl class="specs">
-        <div class="spec"><dt>Platform</dt><dd>Raspberry Pi 4B, 2&nbsp;GB</dd></div>
-        <div class="spec"><dt>Languages</dt><dd>Python 3.12, C++17</dd></div>
-        <div class="spec"><dt>Buffer</dt><dd>5 min in RAM, 24&nbsp;fps</dd></div>
-        <div class="spec"><dt>Timeline</dt><dd>Nov 2025 &ndash; May 2026</dd></div>
-      </dl>
-    </div>
+      <div class="facts">
+        <span class="fact">Raspberry Pi 4B / 2 GB</span>
+        <span class="fact">Python 3.12 + C++20</span>
+        <span class="fact">STEAM ICAC 2026 · Team C6</span>
+        <span class="fact">Nov 2025 – May 2026</span>
+      </div>
+    </header>
 
     <section id="idea">
       <h2>The idea</h2>
@@ -56,187 +298,293 @@
       <p>
         Iris-Lite inverts that. The camera keeps the last five minutes in shared memory and
         writes nothing to disk. Cheap always-on detectors watch that stream, and only when one
-        of them is convinced something happened does the expensive work &mdash; entropy analysis,
-        importance scoring, H.264 encoding &mdash; actually run. The output is a directory of
-        short clips instead of a wall of tape.
+        of them is convinced something happened does the expensive work — entropy analysis,
+        importance scoring, H.264 encoding — actually run. The output is a directory of short
+        clips instead of a wall of tape.
+      </p>
+    </section>
+
+    <section id="architecture">
+      <h2>Architecture</h2>
+      <p>
+        Six processes run in parallel, coordinated by two things: a POSIX shared-memory region
+        for pixels, and a <code>multiprocessing.connection</code> socket on
+        <code>127.0.0.1:8989</code> for events. Nothing passes frames over the socket — detectors
+        send a small <code>CaptureClass</code> record (trigger name, start time, end time, GPIO
+        state) and the buffer manager resolves those timestamps into frame indices.
+      </p>
+
+      <div class="procs">
+        <div class="proc">
+          <div class="proc-name">startCamera.py</div>
+          <div class="proc-desc">Pulls 1920×1080 MJPG from the USB camera over V4L2 and copies each frame into the <code>iris_live_frame</code> shared block. Also renders a live motion-diff overlay into the bottom-left 600×450 region.</div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">main.py</div>
+          <div class="proc-desc">The buffer manager. Re-encodes each frame as JPEG at quality 45 and writes it into a 7,200-slot ring — 24 fps × 5 minutes — with a 200 KB slot ceiling and a quality-30 retry for frames that overflow it. Listens on the event bus and maps incoming timestamps to ring indices.</div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">detector_pipeline.py</div>
+          <div class="proc-desc">The two-tier motion filter — a cheap always-on pass that decides whether the expensive one is worth running.</div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">zone_monitor.py</div>
+          <div class="proc-desc">Watches for a foreground object's feet entering a ground region it segmented at startup.</div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">listener.py</div>
+          <div class="proc-desc">Gates on volume, then classifies two-second windows of audio against a CNN trained for this project.</div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">PerceptualCompressor</div>
+          <div class="proc-desc">The C++ engine. Blocks on the <code>iris_concern_indices</code> block, and on a new event reads the frame window straight out of the ring and encodes it.</div>
+        </div>
+      </div>
+
+      <p class="note">
+        Each detector attaches its own read-only view of the camera block rather than receiving
+        copies, so adding a fourth detector costs CPU but no extra memory.
+      </p>
+    </section>
+
+    <section id="detection">
+      <h2>Detection</h2>
+      <p>
+        Three independent detectors, all analysing at 640×360 and capped at 15 fps. Any of them
+        can raise an event, and each one pads its window by five seconds on both ends so a clip
+        never opens mid-incident.
+      </p>
+
+      <h3>Two-tier motion filter</h3>
+      <p>
+        Tier one is always on and deliberately cheap: CNT background subtraction, firing when
+        more than 10% of the mask is non-zero, plus an exponential moving average of frame
+        luminance (α = 0.05) that fires on a shift of more than 90 grey levels. That catches a
+        light switch and a person equally well, which is the point — it is a filter, not a
+        decision.
       </p>
       <p>
-        The rest of these pages document how that is put together, what the parts actually do,
-        and where the design falls down.
+        Tier two only runs on frames tier one flagged. It takes the Shannon entropy of the
+        pixels under the motion mask and discards anything below 3.0, which rejects flat,
+        uniform changes like a cloud passing. What survives gets centroid tracking: the largest
+        contour's centre must move more than 20 px between frames to count, and the counter
+        decays when it doesn't. Fifty consecutive qualifying frames raise an event. A tree in
+        wind never gets there.
       </p>
-    </section>
 
-    <section id="lifecycle">
-      <h2>How a clip gets made</h2>
+      <h3>Zone monitor</h3>
       <p>
-        The whole system is one loop repeated at different speeds. Every stage below is covered
-        in detail on its own page.
+        On startup it segments the scene once in HSV to find ground it recognises — grass, in
+        the tested configuration — and keeps the two largest, closest contours as the zone mask.
+        From then on it runs GSOC background subtraction and takes only the bottom 20 pixels of
+        the three largest foreground objects, on the theory that what matters is where something
+        is standing, not how tall it is. Overlap between that strip and the zone mask is
+        averaged over a 10-frame window; sustained contact for more than two seconds raises an
+        event tagged <code>Grass Overlap</code>.
       </p>
 
-      <div class="flow">
-        <div class="flow-step">
-          <div class="stage">CAPTURE</div>
-          <div class="body">
-            <strong>startCamera.py</strong>
-            Pulls 1920&times;1080 MJPG from the USB camera and writes each frame into a single
-            shared-memory slot that every other process reads from.
-          </div>
-        </div>
-        <div class="flow-arrow">&#9662;</div>
-        <div class="flow-step">
-          <div class="stage">BUFFER</div>
-          <div class="body">
-            <strong>main.py</strong>
-            Re-encodes each frame as JPEG and drops it into a 7,200-slot ring &mdash; five
-            minutes of history, overwritten continuously, never touching disk.
-          </div>
-        </div>
-        <div class="flow-arrow">&#9662;</div>
-        <div class="flow-step">
-          <div class="stage">DETECT</div>
-          <div class="body">
-            <strong>Three detectors</strong>
-            Motion, ground-zone intrusion and audio classification each watch the live frame
-            independently. Any one of them can raise an event.
-          </div>
-        </div>
-        <div class="flow-arrow">&#9662;</div>
-        <div class="flow-step">
-          <div class="stage">RESOLVE</div>
-          <div class="body">
-            <strong>Event bus</strong>
-            A detector sends a small record over a local socket. The buffer manager turns its
-            timestamps into ring indices and pads the window by five seconds each way.
-          </div>
-        </div>
-        <div class="flow-arrow">&#9662;</div>
-        <div class="flow-step">
-          <div class="stage">ENCODE</div>
-          <div class="body">
-            <strong>PerceptualCompressor</strong>
-            The C++ engine reads that frame range straight out of the ring, scores every frame,
-            and encodes to H.264 at a quality that tracks what the frame contains.
-          </div>
-        </div>
-      </div>
+      <h3>Audio classifier</h3>
+      <p>
+        Audio is captured at 16 kHz and gated on RMS volume (roughly 72 dB SPL) so the model
+        isn't run against silence. Above the gate, the last two seconds are turned into a
+        128-band mel spectrogram — the mel filterbank and STFT are written out longhand with
+        NumPy rather than pulled from librosa, which the Pi doesn't need to carry — and passed
+        to a LiteRT interpreter.
+      </p>
+      <p>
+        The model is a CNN trained from scratch on Freesound data for this project, not a
+        fine-tuned YAMNet. It scores seven classes; six raise events above 45% confidence, and
+        <em>ambience</em> is the one that doesn't:
+      </p>
+      <ul>
+        <li>Gunshot, screaming, glass breaking</li>
+        <li>Aggressive knocking, car screech, dog barking</li>
+        <li>Ambience — ignored</li>
+      </ul>
+
+      <h3>GPIO</h3>
+      <p>
+        A reed switch on pin 17 and a motion sensor on pin 27 don't raise events on their own.
+        Their state is stamped into every <code>CaptureClass</code>, so the compressor knows a
+        door was open while it decides how much bitrate the clip deserves.
+      </p>
     </section>
 
-    <section id="docs">
-      <h2>Documentation</h2>
+    <section id="compression">
+      <h2>P.E.L.I.C.A.N.</h2>
+      <p>
+        <em>Perceptual Edge Lightweight Intelligent Compression and Adaptive Network</em> — the
+        C++ half of the project, written by Shreyash Thakur. The premise is that within a
+        ten-second clip the frames are not equally worth keeping, so quality should track
+        content rather than being fixed at encode time.
+      </p>
+      <p>
+        Analysis runs on a 320×180 copy while the encoder works at 640×360. Each frame gets a
+        score in [0, 1] from five signals:
+      </p>
 
-      <div class="card-grid">
-        <a class="card" href="architecture.html">
-          <span class="card-index">01</span>
-          <h3>Architecture</h3>
-          <p>The six processes, the shared-memory map they coordinate through, and why frames
-          never travel over the event bus.</p>
-        </a>
-        <a class="card" href="detection.html">
-          <span class="card-index">02</span>
-          <h3>Detection</h3>
-          <p>The two-tier motion filter, the ground-zone monitor, the audio CNN, and the GPIO
-          state stamped onto every event.</p>
-        </a>
-        <a class="card" href="compression.html">
-          <span class="card-index">03</span>
-          <h3>Compression</h3>
-          <p>P.E.L.I.C.A.N. &mdash; importance scoring, system pressure, quality tiers, event
-          clustering and the FFmpeg pipe.</p>
-        </a>
-        <a class="card" href="hardware.html">
-          <span class="card-index">04</span>
-          <h3>Hardware &amp; power</h3>
-          <p>Bill of materials, sensor wiring, the printed enclosure, and the carbon-aware
-          charging board that feeds the unit.</p>
-        </a>
-        <a class="card" href="results.html">
-          <span class="card-index">05</span>
-          <h3>Results &amp; limits</h3>
-          <p>A ten-minute instrumented run, what the CPU numbers say about the design, and an
-          honest list of what the system cannot do.</p>
-        </a>
-        <a class="card" href="install.html">
-          <span class="card-index">06</span>
-          <h3>Install &amp; run</h3>
-          <p>Dependencies, building the C++ engine, launching all six processes, the demo
-          scripts, and troubleshooting.</p>
-        </a>
-        <a class="card" href="reference.html">
-          <span class="card-index">07</span>
-          <h3>Reference</h3>
-          <p>Every tunable constant, the shared-memory block table, the event record schema and
-          the source file map.</p>
-        </a>
-      </div>
-    </section>
-
-    <section id="design">
-      <h2>Three decisions that shaped everything</h2>
-
-      <div class="card-grid two">
-        <div class="card">
-          <h3>The buffer lives in RAM</h3>
-          <p>
-            Five minutes of JPEG frames reserve 1.44&nbsp;GB of a 2&nbsp;GB machine outright.
-            That is an uncomfortable amount of memory, and it buys two things: an SD card that
-            is never rewritten in a loop, and the ability to save the ten seconds
-            <em>before</em> a detector noticed anything.
-          </p>
-        </div>
-        <div class="card">
-          <h3>Detection is tiered, not smart</h3>
-          <p>
-            The always-on pass is deliberately dumb and cheap &mdash; background subtraction and
-            a running luminance average. Expensive analysis only runs on frames that pass it.
-            A detector that is right 60% of the time for almost no CPU is more useful here than
-            one that is right 95% of the time and saturates the core.
-          </p>
-        </div>
-        <div class="card">
-          <h3>Quality is per-frame, not per-clip</h3>
-          <p>
-            Within one ten-second clip, the frames are not equally worth keeping. The compressor
-            scores each one on motion, edges, position in the event and whether a face is
-            present, then picks a quality tier from that score rather than from a fixed setting.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <section id="credits">
-      <h2>Who built it</h2>
       <div class="scroll">
         <table>
           <thead>
-            <tr><th>Name</th><th>Contribution</th></tr>
+            <tr><th>Signal</th><th class="num">Weight</th><th>How</th></tr>
           </thead>
           <tbody>
-            <tr><td>Abhiram Vadali</td><td>Detection software, buffer manager, audio model, event logic</td></tr>
-            <tr><td>Shreyash Thakur</td><td>Saliency-based compression engine (P.E.L.I.C.A.N.)</td></tr>
-            <tr><td>Subeg Singh Gill</td><td>Lab report, repository documentation</td></tr>
-            <tr><td>Atharv Rajesh</td><td>Lab report</td></tr>
+            <tr><td>Motion</td><td class="num">0.30</td><td>Mean absolute frame difference, EMA-smoothed 0.7/0.3, with a 0.015 noise floor</td></tr>
+            <tr><td>Spatial</td><td class="num">0.20</td><td>Canny edge density across the frame</td></tr>
+            <tr><td>Region</td><td class="num">0.20</td><td>Edge density in the centre half, scaled 1.35×</td></tr>
+            <tr><td>Temporal</td><td class="num">0.20</td><td>Gaussian falloff from the event's midpoint</td></tr>
+            <tr><td>Face</td><td class="num">0.10</td><td>Haar cascade, every 10th frame, decaying 0.85× between hits</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="note">
-        With thanks to Mr. Hadley for support throughout development, and to Macmeet B for the
-        loan of the Raspberry Pi 4B that made the project possible.
+
+      <p>
+        The weighted sum is passed through <code>log1p(x·7)/log1p(7)</code>, which lifts the
+        low end — most frames score poorly on raw motion, and a linear map would flatten the
+        whole clip into the worst quality tier.
+      </p>
+
+      <h3>Pressure</h3>
+      <p>
+        A <code>SystemGovernor</code> reads <code>/proc/stat</code> and the thermal zone and
+        fuses them into one pressure value (0.7 CPU, 0.3 temperature). Pressure scales importance
+        down, so the same scene encodes more cheaply on a hot, loaded Pi than on a cold idle one.
+        Frames are only dropped outright under genuine duress — pressure above 0.96 <em>and</em>
+        importance below 0.25 — because a compressor that thins footage during the busy moment
+        defeats the purpose.
+      </p>
+
+      <h3>Quality tiers</h3>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Fused importance</th><th class="num">CRF</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>&gt; 0.75</td><td class="num">20</td></tr>
+            <tr><td>&gt; 0.50</td><td class="num">24</td></tr>
+            <tr><td>&gt; 0.30</td><td class="num">28</td></tr>
+            <tr><td>otherwise</td><td class="num">32</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Frames go to FFmpeg over a pipe using <code>h264_v4l2m2m</code>, the Pi's hardware
+        encoder, falling back to <code>libx264 -preset veryfast</code> where that isn't
+        available. Because the hardware encoder takes a bitrate rather than a CRF, the tier is
+        mapped to one — 2000 kbps at CRF 18, sliding 80 kbps per step, clamped to 500–4000.
+      </p>
+      <p>
+        Before any of that, <code>EventCluster</code> merges detections that land close together
+        in time <em>and</em> carry comparable weight, so a door opening and a gunshot become one
+        clip while a gunshot and a grass overlap stay separate. Clips are written to
+        <code>/mnt/clipDrive/clips/</code>, named for their frame range and trigger.
       </p>
     </section>
 
-    <div class="page-nav">
-      <span></span>
-      <a href="architecture.html"><span>Next</span>Architecture &rarr;</a>
-    </div>
+    <section id="results">
+      <h2>Measured</h2>
+      <p>
+        A ten-minute continuous run on a Pi 4B with all six processes active, sampled by shell
+        script every 30 seconds (21 samples). Figures are per-process CPU as reported by
+        <code>ps</code>, so they are shares of a single core — the sum sits near 94% of one
+        core on a four-core part.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Process</th><th class="num">Mean %</th><th class="num">Min</th><th class="num">Max</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Zone monitor</td><td class="num">36.1</td><td class="num">34.5</td><td class="num">37.5</td></tr>
+            <tr><td>Camera</td><td class="num">21.8</td><td class="num">20.9</td><td class="num">22.5</td></tr>
+            <tr><td>Tiered detection</td><td class="num">16.2</td><td class="num">0.3</td><td class="num">20.0</td></tr>
+            <tr><td>Buffer manager</td><td class="num">14.4</td><td class="num">12.1</td><td class="num">19.9</td></tr>
+            <tr><td>Listener</td><td class="num">4.3</td><td class="num">0.9</td><td class="num">16.1</td></tr>
+            <tr><td>Compression</td><td class="num">2.1</td><td class="num">0.4</td><td class="num">10.1</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        No crashes, shared-memory faults or dropped frames over the run. RAM held between 1.5
+        and 1.8 GB against the 1.44 GB the ring buffer reserves outright, and the package
+        stayed at 68 °C with passive and active cooling.
+      </p>
+      <p>
+        The shape of that table is the interesting part. GSOC background subtraction in the zone
+        monitor costs more than everything else combined, and it runs constantly. The two
+        components that only work when something happens — the listener and the compressor —
+        idle near zero and peak at 16.1% and 10.1% respectively. The event-driven design shows
+        up directly in the min/max spread.
+      </p>
+      <p class="note">
+        Roughly 9 points of the total are <code>cv2.imshow</code> preview windows, which exist
+        for demonstration and would not run on a deployed unit.
+      </p>
+    </section>
+
+    <section id="power">
+      <h2>Privacy and power</h2>
+      <p>
+        No frame is uploaded, and there is no cloud account. Face detection exists only as a
+        Haar cascade feeding one 10% term of the importance score — it answers "is there a face
+        here," never "whose." User-defined privacy zones are excluded from processing and
+        surface only as abstract movement.
+      </p>
+      <p>
+        Storage behaviour follows from the buffer: the rolling five minutes lives in RAM, which
+        does not wear out under constant rewriting the way an SD card does, and only clips that
+        survive detection are ever committed to flash.
+      </p>
+      <p>
+        Charging is handled off-board by an ESP32-C3-WROOM-02 on a custom KiCad board. It
+        queries the Green Software Foundation's Carbon Aware SDK over Wi-Fi and gates the
+        charge line, so the unit draws from its battery and tops up when the grid it is
+        attached to is running clean. A status GPIO blinks on Wi-Fi or query failure so the
+        board fails loudly rather than silently charging on dirty power.
+      </p>
+    </section>
+
+    <section id="limits">
+      <h2>What it doesn't do</h2>
+      <div class="limits">
+        <p>
+          Detection is motion- and region-based, so it can be fooled. Sudden lighting changes
+          and fast movement across the frame both produce false positives, and a slow, careful
+          approach that never accumulates 50 frames of centroid travel can be missed entirely.
+        </p>
+        <p>
+          The audio model is trained on a small dataset and its accuracy reflects that. Six
+          classes is a narrow vocabulary for the range of sounds a porch actually produces.
+        </p>
+        <p>
+          The zone monitor recognises grass because grass is what it was tuned for in HSV.
+          Pointing it at gravel or concrete means retuning the range by hand.
+        </p>
+        <p>
+          Compression trades quality for storage in low-activity regions by design, which means
+          a clip's dormant background is visibly softer than its subject. That is the intended
+          behaviour, but it is a trade, not a free win.
+        </p>
+        <p>
+          Adding cameras is not free either. At this CPU load a second stream needs a hardware
+          accelerator — a Coral Edge TPU would move the neural work off the CPU — before one Pi
+          could act as a hub.
+        </p>
+      </div>
+    </section>
 
     <footer>
       <p>
-        Built for the STEAM ICAC 2026 Computer Science event. Analysis and lab report will be
-        published after the competition.
+        Detection software by Abhiram Vadali. Compression engine by Shreyash Thakur. Lab report
+        with Subeg Singh Gill and Atharv Rajesh. Built for the STEAM ICAC 2026 Computer Science
+        event, with thanks to Mr. Hadley, and to Macmeet B for the loan of the Pi.
       </p>
       <p>
-        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
-        <a href="https://github.com/AbhiramV010/CarbonAwareCharge">Charging circuit</a> &middot;
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> ·
+        <a href="https://github.com/AbhiramV010/CarbonAwareCharge">Charging circuit</a> ·
         <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
       </p>
     </footer>
