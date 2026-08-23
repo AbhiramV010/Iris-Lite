@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Compression &middot; Iris-Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="P.E.L.I.C.A.N. - the Iris-Lite C++ compression engine. Per-frame importance scoring, system pressure, quality tiers and hardware H.264 encoding." />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+
+<body>
+
+  <div class="top-nav">
+    <div class="top-nav-inner">
+      <a class="wordmark" href="index.html">iris-lite</a>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="detection.html">Detection</a>
+        <a href="compression.html" class="active">Compression</a>
+        <a href="hardware.html">Hardware</a>
+        <a href="results.html">Results</a>
+        <a href="install.html">Install</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <div class="page-head">
+      <p class="eyebrow">03 &middot; Compression</p>
+      <h1>P.E.L.I.C.A.N.</h1>
+      <p class="lede">
+        Perceptual Edge Lightweight Intelligent Compression and Adaptive Network &mdash; the
+        C++ half of the project, written by Shreyash Thakur. The premise is that within a
+        ten-second clip the frames are not equally worth keeping, so quality should track
+        content rather than being fixed once at encode time.
+      </p>
+    </div>
+
+    <section id="pipeline">
+      <h2>What happens to an event</h2>
+      <p>
+        The engine runs a producer/consumer split. <code>main.cpp</code> polls shared memory and
+        pushes event windows onto a queue; a worker thread pulls them off one at a time and runs
+        the pipeline below. Because it is a queue, an event arriving mid-encode waits rather
+        than being lost.
+      </p>
+
+      <div class="flow">
+        <div class="flow-step">
+          <div class="stage">1</div>
+          <div class="body">
+            <strong>Cluster</strong>
+            <code>EventCluster</code> decides whether this event should be merged with the
+            previous one, and ranks whatever comes out by priority.
+          </div>
+        </div>
+        <div class="flow-arrow">&#9662;</div>
+        <div class="flow-step">
+          <div class="stage">2</div>
+          <div class="body">
+            <strong>Read</strong>
+            For each index in the window, the JPEG is read from the ring and decoded, with a
+            guard against reading slots the writer has not filled yet.
+          </div>
+        </div>
+        <div class="flow-arrow">&#9662;</div>
+        <div class="flow-step">
+          <div class="stage">3</div>
+          <div class="body">
+            <strong>Score</strong>
+            <code>ImportanceEngine</code> reduces the frame to a single number in
+            [0,&nbsp;1] from five weighted signals.
+          </div>
+        </div>
+        <div class="flow-arrow">&#9662;</div>
+        <div class="flow-step">
+          <div class="stage">4</div>
+          <div class="body">
+            <strong>Govern</strong>
+            <code>SystemGovernor</code> reports how loaded and how hot the Pi is; that pressure
+            pulls the score down and the CRF up.
+          </div>
+        </div>
+        <div class="flow-arrow">&#9662;</div>
+        <div class="flow-step">
+          <div class="stage">5</div>
+          <div class="body">
+            <strong>Encode</strong>
+            <code>H264Encoder</code> writes raw BGR down a pipe to FFmpeg, using the Pi's
+            hardware encoder where it exists.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="importance">
+      <h2>Importance scoring</h2>
+      <p>
+        Analysis runs on a 320&times;180 copy of the frame while the encoder works at
+        640&times;360. Halving the analysis resolution is nearly free in accuracy terms &mdash;
+        edge density and mean absolute difference are both aggregate statistics &mdash; and it
+        cuts the per-frame cost by a factor of four.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Signal</th><th class="num">Weight</th><th>How it is computed</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Motion</td><td class="num">0.30</td>
+              <td>Mean absolute difference against the previous frame, normalised to [0,&nbsp;1], EMA-smoothed 0.7&nbsp;prev&nbsp;/&nbsp;0.3&nbsp;new, with anything below 0.015 zeroed as sensor noise</td>
+            </tr>
+            <tr>
+              <td>Spatial</td><td class="num">0.20</td>
+              <td>Canny edge density (thresholds 50/150) across the whole frame</td>
+            </tr>
+            <tr>
+              <td>Region</td><td class="num">0.20</td>
+              <td>Edge density inside the centre half of the frame, scaled 1.35&times; and clamped</td>
+            </tr>
+            <tr>
+              <td>Temporal</td><td class="num">0.20</td>
+              <td>Gaussian falloff from the event midpoint: <code>exp(-d&sup2; / 80)</code></td>
+            </tr>
+            <tr>
+              <td>Face</td><td class="num">0.10</td>
+              <td>Haar cascade run every 10th frame; score is the largest face area over 18% of the frame, decaying 0.85&times; on frames where no face is found</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Why each one is there</h3>
+      <ul>
+        <li><strong>Motion</strong> is the primary signal, and the EMA is what stops quality
+        oscillating frame to frame. A single-frame spike moves the smoothed value by only 30%
+        of its size.</li>
+        <li><strong>Spatial</strong> edge density stands in for detail. A frame full of edges
+        loses more visible information per unit of compression than a flat one.</li>
+        <li><strong>Region</strong> encodes the assumption that the subject is roughly centred.
+        The 1.35&times; scaling makes the centre count for more than its area alone would give
+        it.</li>
+        <li><strong>Temporal</strong> is a prior, not a measurement. The detector padded the
+        window by five seconds each way, so the middle of the clip is where the incident
+        probably is. The Gaussian is narrow &mdash; at 20 frames from the peak it has already
+        fallen to essentially zero.</li>
+        <li><strong>Face</strong> is deliberately the smallest weight. It is a presence
+        detector, not identification, and running it every tenth frame with a decay between
+        hits keeps the cascade off the critical path.</li>
+      </ul>
+
+      <h3>The log curve</h3>
+      <p>
+        The weighted sum is not used directly. It is passed through a logarithmic normaliser:
+      </p>
+
+      <pre><code>float raw = 0.30f * s.motion
+          + 0.20f * s.spatial
+          + 0.20f * s.region
+          + 0.20f * s.temporal
+          + 0.10f * s.face;
+
+float normalized = std::log1p(raw * 7.0f) / std::log1p(7.0f);
+s.score = std::clamp(normalized, 0.0f, 1.0f);</code></pre>
+
+      <p>
+        This exists because raw scores cluster near the bottom of the range. Mean absolute
+        difference on a 320&times;180 frame is a small number even during obvious movement, and
+        a linear map would push nearly every frame into the lowest quality tier &mdash; which
+        is a fixed-CRF encoder with extra steps. The curve lifts the low end so the tiers
+        actually get used, and it does so smoothly rather than by rescaling around a
+        hand-picked midpoint.
+      </p>
+    </section>
+
+    <section id="pressure">
+      <h2>System pressure</h2>
+      <p>
+        The compressor shares four cores with five Python processes, and it is the only one that
+        can afford to back off. <code>SystemGovernor</code> gives it the information to do so.
+      </p>
+
+      <pre><code>float cpu     = getCpuLoad();      <span class="c">// delta of idle vs total from /proc/stat</span>
+float thermal = getThermalLoad(); <span class="c">// thermal_zone0 temp, normalised against 100 &deg;C</span>
+
+float pressure = std::clamp(0.7f * cpu + 0.3f * thermal, 0.0f, 1.0f);</code></pre>
+
+      <p>
+        Pressure feeds the pipeline in two places. It scales the fused importance down by up to
+        25%, and it is added directly to the CRF at up to six points. The same scene therefore
+        encodes more cheaply on a hot, loaded Pi than on a cold idle one, without any explicit
+        throttle logic.
+      </p>
+
+      <h3>Dropping frames</h3>
+      <p>
+        A dropped frame is unrecoverable, so the engine makes it hard to happen. Three
+        independent conditions must all agree:
+      </p>
+
+      <ol>
+        <li>
+          <strong>Policy.</strong> <code>CompressionPolicy::shouldSkipFrame</code> returns false
+          outright below 0.75 pressure. Between 0.75 and 0.9 it will skip frames scoring under
+          0.3; above 0.9, frames under 0.5.
+        </li>
+        <li>
+          <strong>Continuity protection.</strong> The orchestrator vetoes the skip if the frame
+          is within six frames of a high-importance one, or if the previous frame scored above
+          0.5 and this one is still above 0.3. This keeps the encoder from punching holes in the
+          middle of an action sequence.
+        </li>
+        <li>
+          <strong>Final gate.</strong> The engine only actually drops if pressure is above 0.96
+          <em>and</em> the fused importance is below 0.25.
+        </li>
+      </ol>
+
+      <div class="callout">
+        <span class="label">Design note</span>
+        <p>
+          The layering is intentional and the effect is that dropping almost never happens. A
+          compressor that thins footage during the busy moment defeats the purpose of the
+          system, so the engine degrades quality first, at up to six CRF points, and only
+          discards frames when the board is genuinely in trouble.
+        </p>
+      </div>
+    </section>
+
+    <section id="quality">
+      <h2>Quality tiers</h2>
+      <p>
+        The fused importance selects a CRF from four steps rather than mapping continuously.
+        Discrete tiers are what keep the encoder from re-opening a segment on every frame.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Fused importance</th><th class="num">CRF</th><th class="num">Nominal fps</th><th>Reads as</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>&gt; 0.75</td><td class="num">20</td><td class="num">24</td><td>Subject in frame, moving, probably a face</td></tr>
+            <tr><td>&gt; 0.50</td><td class="num">24</td><td class="num">18</td><td>Clear activity near the centre of the event</td></tr>
+            <tr><td>&gt; 0.30</td><td class="num">28</td><td class="num">12</td><td>Peripheral movement, or the edges of the window</td></tr>
+            <tr><td>otherwise</td><td class="num">32</td><td class="num">8</td><td>Lead-in and lead-out padding</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note">
+        The fps column is computed and reported but not currently applied &mdash; the encoder
+        runs at a fixed 24&nbsp;fps and expresses quality through CRF alone.
+      </p>
+
+      <p>
+        Pressure is then added on top, and the result clamped to the range 18&ndash;40:
+      </p>
+
+      <pre><code>d.crf = std::clamp(crfBase + (pressure * 6.0f), 18.0f, 40.0f);</code></pre>
+    </section>
+
+    <section id="clustering">
+      <h2>Event clustering</h2>
+      <p>
+        Real incidents set off more than one detector. A door opening, a shout and movement
+        across the lawn inside four seconds are one event, and writing three overlapping clips
+        of it wastes storage and makes review harder. <code>EventCluster</code> merges them
+        &mdash; but only when they are plausibly the same incident.
+      </p>
+
+      <h3>The two conditions</h3>
+      <p>
+        Two events merge if the gap between them is small <em>and</em> their triggers carry
+        comparable weight.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Trigger contains</th><th class="num">Weight</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>door</td><td class="num">1.00</td></tr>
+            <tr><td>gunshot</td><td class="num">1.00</td></tr>
+            <tr><td>screaming</td><td class="num">0.95</td></tr>
+            <tr><td>glass</td><td class="num">0.90</td></tr>
+            <tr><td>anything unmatched</td><td class="num">0.50</td></tr>
+            <tr><td>motion</td><td class="num">0.40</td></tr>
+            <tr><td>grass</td><td class="num">0.20</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Similarity is <code>1 - |weight_a - weight_b|</code>, and merging requires it to exceed
+        0.55. A gunshot and a door (1.00 vs 1.00) merge freely; a gunshot and a grass overlap
+        (1.00 vs 0.20, similarity 0.20) never do, however close together they land. The severity
+        of an event is treated as a proxy for what kind of event it is.
+      </p>
+
+      <h3>The adaptive gap</h3>
+      <p>
+        The time window widens when things are busy:
+      </p>
+
+      <pre><code>float density = std::min(3.0f, eventCountWindow / 8.0f);
+return BASE_GAP * density;   <span class="c">// BASE_GAP = 120 frames = 5 s at 24 fps</span></code></pre>
+
+      <p>
+        Quiet periods use a tight window, so two unrelated events stay separate. A burst of
+        detections widens it up to 15 seconds, on the reasoning that a lot happening at once is
+        usually one thing happening.
+      </p>
+
+      <div class="callout warn">
+        <span class="label">Currently inert</span>
+        <p>
+          Trigger strings do not reach the C++ side in the present build, so every event arrives
+          weighted 0.50 and the semantic half of the merge rule cannot discriminate. The gap
+          rule still works. Fixing the shared-memory handoff described in
+          <a href="architecture.html#handoff">Architecture</a> is what would switch this on.
+        </p>
+      </div>
+
+      <h3>Ranking</h3>
+      <p>
+        On flush, events are scored and sorted so the most important is encoded first &mdash;
+        which matters if the queue is backed up and the ring is about to overwrite the frames.
+      </p>
+
+      <pre><code>raw = 0.65f * triggerWeight
+    + 0.25f * min(1.0f, clusterSize / 5.0f)
+    + 0.10f * min(1.0f, (endFrame - startFrame) / 300.0f);</code></pre>
+    </section>
+
+    <section id="encoder">
+      <h2>The encoder</h2>
+      <p>
+        <code>H264Encoder</code> is a wrapper around an FFmpeg process opened with
+        <code>popen</code>. Frames are written to it as raw BGR24 over the pipe; FFmpeg does the
+        colour conversion and the encoding.
+      </p>
+
+      <pre><code>ffmpeg -y -loglevel error \
+  -f rawvideo -pix_fmt bgr24 -s 640x360 -r 24 -i - \
+  -c:v h264_v4l2m2m -b:v 2000k \
+  -pix_fmt yuv420p /mnt/clipDrive/clips/iris_1234_1560_unknown.mp4</code></pre>
+
+      <p>
+        Hardware first, software second. The engine tries <code>h264_v4l2m2m</code> &mdash; the
+        Pi's V4L2 memory-to-memory encoder, which offloads the work from the CPU entirely
+        &mdash; and falls back to <code>libx264 -preset veryfast</code> when the pipe cannot be
+        opened.
+      </p>
+
+      <h3>CRF to bitrate</h3>
+      <p>
+        The hardware encoder takes a target bitrate, not a quality factor, so the tier has to be
+        translated:
+      </p>
+
+      <pre><code>int bitrateKbps = 2000 - (crf - 18) * 80;
+bitrateKbps = std::clamp(bitrateKbps, 500, 4000);</code></pre>
+
+      <p>
+        CRF 18 maps to 2,000&nbsp;kbps and every point above it removes 80&nbsp;kbps, giving
+        1,840&nbsp;kbps at the top tier and 880&nbsp;kbps at the bottom. The mapping is linear
+        and approximate; CRF is a quality target and bitrate is a rate target, and they do not
+        correspond exactly for any given scene.
+      </p>
+
+      <div class="callout warn">
+        <span class="label">Limitation</span>
+        <p>
+          Because the bitrate is baked into the FFmpeg command line, changing it means closing
+          and re-opening the pipe &mdash; which starts a new file. In the current build the
+          encoder opens once per event, at the first frame's CRF, and per-frame quality
+          decisions after that update the engine's internal state without reaching FFmpeg.
+          Per-frame adaptivity is fully computed; what actually varies on disk is per-clip.
+        </p>
+      </div>
+    </section>
+
+    <section id="output">
+      <h2>Output</h2>
+      <p>
+        Clips are written to <code>/mnt/clipDrive/clips/</code>, which
+        <code>StorageManager</code> creates on startup if it is missing. The filename encodes
+        the ring range and the trigger:
+      </p>
+
+      <pre><code>iris_&lt;startFrame&gt;_&lt;endFrame&gt;_&lt;trigger&gt;.mp4</code></pre>
+
+      <p>
+        Each event logs a summary line on completion with the number of frames encoded, dropped
+        and failed &mdash; failed meaning a slot that was empty, oversized, or held a JPEG that
+        would not decode. A handful of failures at the edges of a window is normal and means the
+        ring had already moved past those slots.
+      </p>
+    </section>
+
+    <div class="page-nav">
+      <a href="detection.html"><span>Previous</span>&larr; Detection</a>
+      <a href="hardware.html"><span>Next</span>Hardware &rarr;</a>
+    </div>
+
+    <footer>
+      <p>Compression engine by Shreyash Thakur.</p>
+      <p>
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
+        <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>

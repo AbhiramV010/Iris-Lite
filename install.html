@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Install &middot; Iris-Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Installing, building and running Iris-Lite on a Raspberry Pi 4B, plus the demo scripts and troubleshooting." />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+
+<body>
+
+  <div class="top-nav">
+    <div class="top-nav-inner">
+      <a class="wordmark" href="index.html">iris-lite</a>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="detection.html">Detection</a>
+        <a href="compression.html">Compression</a>
+        <a href="hardware.html">Hardware</a>
+        <a href="results.html">Results</a>
+        <a href="install.html" class="active">Install</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <div class="page-head">
+      <p class="eyebrow">06 &middot; Install &amp; run</p>
+      <h1>Getting it running</h1>
+      <p class="lede">
+        Iris-Lite targets Debian on a Raspberry Pi 4B. The Python side runs anywhere OpenCV
+        does &mdash; GPIO disables itself automatically off Linux &mdash; but the compression
+        engine needs POSIX shared memory, so the full system is Linux-only.
+      </p>
+    </div>
+
+    <section id="requirements">
+      <h2>Requirements</h2>
+
+      <div class="card-grid two">
+        <div class="card">
+          <h3>System</h3>
+          <ul>
+            <li>Debian Linux (Raspberry Pi OS)</li>
+            <li>Python 3.12.7</li>
+            <li>GCC 11+, C++17</li>
+            <li>CMake 3.16+</li>
+            <li>FFmpeg with <code>h264_v4l2m2m</code></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Python packages</h3>
+          <ul>
+            <li><code>opencv-contrib-python</code> &mdash; the <code>bgsegm</code> module is required</li>
+            <li><code>numpy</code></li>
+            <li><code>pyaudio</code></li>
+            <li><code>ai-edge-litert</code></li>
+            <li><code>RPi.GPIO</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <span class="label">Not optional</span>
+        <p>
+          Plain <code>opencv-python</code> will not work. Both background subtractors the
+          detectors rely on &mdash; CNT and GSOC &mdash; live in <code>cv2.bgsegm</code>, which
+          only ships in the contrib build.
+        </p>
+      </div>
+    </section>
+
+    <section id="install">
+      <h2>Installation</h2>
+
+      <ol class="steps">
+        <li>
+          <h3>System packages</h3>
+          <pre><code>sudo apt update &amp;&amp; sudo apt upgrade -y
+sudo apt install -y ffmpeg libopencv-dev python3-pip cmake build-essential</code></pre>
+          <p class="note">
+            <code>libopencv-dev</code> also provides the Haar cascade XML the compressor's face
+            term loads from <code>/usr/share/opencv4/haarcascades/</code>.
+          </p>
+        </li>
+
+        <li>
+          <h3>Python packages</h3>
+          <pre><code>pip3 install opencv-contrib-python numpy pyaudio ai-edge-litert RPi.GPIO</code></pre>
+        </li>
+
+        <li>
+          <h3>Clone</h3>
+          <pre><code>git clone https://github.com/AbhiramV010/Iris-Lite.git
+cd Iris-Lite</code></pre>
+        </li>
+
+        <li>
+          <h3>Build the compression engine</h3>
+          <pre><code>cd Compression
+mkdir -p build &amp;&amp; cd build
+cmake ..
+make -j4
+cd ../..</code></pre>
+          <p class="note">
+            Produces <code>Compression/build/PerceptualCompressor</code>. CMake defaults to a
+            Release build with <code>-O3 -mcpu=cortex-a72</code>, which is correct for the Pi 4B
+            and wrong for anything else &mdash; override <code>CMAKE_CXX_FLAGS_RELEASE</code> if
+            you are building elsewhere.
+          </p>
+        </li>
+
+        <li>
+          <h3>Prepare clip storage</h3>
+          <pre><code>sudo mkdir -p /mnt/clipDrive/clips
+sudo chmod 777 /mnt/clipDrive/clips</code></pre>
+          <p class="note">
+            The engine creates these directories itself on startup, but it cannot mount a drive
+            for you. If <code>/mnt/clipDrive</code> is meant to be external storage, mount it
+            before launching.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section id="running">
+      <h2>Running</h2>
+      <p>
+        From the repository root:
+      </p>
+
+      <pre><code>bash startIrisLite.sh</code></pre>
+
+      <p>
+        The launcher opens seven <code>uxterm</code> windows &mdash; <code>top</code> plus the
+        six system processes &mdash; in a fixed order, with a progress bar between steps. That
+        order matters: <code>main.py</code> creates the ring blocks, <code>startCamera.py</code>
+        gets five seconds to bring the camera up, and the detectors are started only afterwards
+        because each raises an error if the live frame block is missing.
+      </p>
+
+      <p>All six must be running for the system to work end to end:</p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Window</th><th>Command</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Main Tool</td><td class="mono">python3 ./Decision/main.py</td></tr>
+            <tr><td>Camera Utility</td><td class="mono">python3 ./Decision/startCamera.py</td></tr>
+            <tr><td>Detector Pipeline</td><td class="mono">python3 ./Decision/detector_pipeline.py</td></tr>
+            <tr><td>Listener Tool</td><td class="mono">python3 ./Decision/listener.py</td></tr>
+            <tr><td>Zone Monitor</td><td class="mono">python3 ./Decision/zone_monitor.py</td></tr>
+            <tr><td>Compression System</td><td class="mono">cd Compression &amp;&amp; sudo build/./PerceptualCompressor</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <span class="label">Bash, not zsh</span>
+        <p>
+          The launcher uses bash array and arithmetic syntax. Run it with <code>bash</code>
+          explicitly. The compressor is started with <code>sudo</code> because it needs to map
+          shared memory created by another user's process; it must also be launched from within
+          <code>Compression/</code>, since it loads <code>config/config.json</code> by relative
+          path.
+        </p>
+      </div>
+
+      <p>
+        Stop the system by closing the windows, or by pressing <code>x</code> in any OpenCV
+        preview window to break that process's loop cleanly.
+      </p>
+    </section>
+
+    <section id="demos">
+      <h2>Demo scripts</h2>
+      <p>
+        Three cut-down launchers in <code>demos/</code> bring up the minimum needed to
+        demonstrate one detector &mdash; the buffer manager, the camera, and the detector
+        itself. Useful for tuning thresholds without the other two competing for CPU.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Script</th><th>Starts</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">demos/det_pipe.sh</td><td>Buffer manager, camera, two-tier motion detector</td></tr>
+            <tr><td class="mono">demos/sound.sh</td><td>Buffer manager, camera, audio listener</td></tr>
+            <tr><td class="mono">demos/zone.sh</td><td>Buffer manager, camera, zone monitor</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note">
+        None of the demo scripts start the compressor, so events are raised and logged but no
+        clips are written.
+      </p>
+    </section>
+
+    <section id="config">
+      <h2>Configuration</h2>
+      <p>
+        The compression engine reads <code>Compression/config/config.json</code> at startup.
+        Every key is optional and falls back to the default compiled into
+        <code>Config.hpp</code>.
+      </p>
+
+      <pre><code>{
+  "encode_width": 640,
+  "encode_height": 360,
+
+  "perceptual_width": 320,
+  "perceptual_height": 180,
+
+  "fps": 24,
+  "crf": 22,
+
+  "use_faces": true,
+  "use_motion": true,
+  "use_edges": true,
+
+  "face_model_path": "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+  "face_detect_interval": 10
+}</code></pre>
+
+      <p>
+        Loading is validated: a non-positive encode resolution aborts startup, an fps outside
+        1&ndash;60 is reset to 24 with a warning, and a non-positive face interval is reset to
+        10. Detector thresholds are not configurable this way &mdash; they are constants at the
+        top of each Python file, listed in the <a href="reference.html">reference</a>.
+      </p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+
+      <h3>Camera not detected</h3>
+      <p>
+        Confirm the device exists and advertises MJPG at 1920&times;1080:
+      </p>
+      <pre><code>v4l2-ctl --list-formats-ext</code></pre>
+      <p>
+        <code>startCamera.py</code> prints a warning if the negotiated codec is not MJPG and
+        continues anyway, but a YUYV-only camera will not sustain 1080p over USB and the capture
+        loop will stall.
+      </p>
+
+      <h3>Shared memory error on startup</h3>
+      <p>
+        A hard kill leaves blocks behind. Clear the live frame block:
+      </p>
+      <pre><code>python3 -c "from multiprocessing import shared_memory; \
+shared_memory.SharedMemory('iris_live_frame').unlink()"</code></pre>
+      <p>
+        The ring blocks are larger and worth clearing too if memory looks wrong &mdash; the same
+        call works for <code>iris_frame_buffer_data</code>,
+        <code>iris_frame_sizes</code>, <code>iris_frame_head_tail</code>,
+        <code>iris_concern_indices</code>, <code>iris_indices</code> and
+        <code>iris_lite_audio</code>. They also appear as files under <code>/dev/shm/</code>.
+      </p>
+
+      <h3>Compression engine not encoding</h3>
+      <p>
+        First check the hardware encoder is present:
+      </p>
+      <pre><code>ffmpeg -codecs | grep h264_v4l2m2m</code></pre>
+      <p>
+        If it is missing the engine falls back to <code>libx264</code> and logs the switch, so
+        an absent encoder slows things down rather than breaking them. If nothing is written at
+        all, check that <code>/mnt/clipDrive/clips/</code> is writable by the user running the
+        binary, and that the engine was launched from inside <code>Compression/</code> so it
+        could find its config.
+      </p>
+
+      <h3>Audio device not found</h3>
+      <p>
+        <code>listener.py</code> scans for an input device whose name contains
+        <code>usb</code> or <code>hw</code>, then falls back to the system default, then exits.
+        List what is available:
+      </p>
+      <pre><code>arecord -l</code></pre>
+
+      <h3>GPIO errors off Linux</h3>
+      <p>
+        Expected. <code>sensor_helper.py</code> disables GPIO entirely when
+        <code>platform.system()</code> is not <code>Linux</code> and prints a notice. Detection
+        works normally; the sensor fields on each event are simply left unset.
+      </p>
+
+      <h3>No display attached</h3>
+      <p>
+        <code>main.py</code> and <code>zone_monitor.py</code> call <code>cv2.imshow</code>,
+        catch the failure and warn that they are running headlessly. This is safe. Removing
+        those calls entirely reclaims a meaningful amount of CPU on a deployed unit &mdash; see
+        <a href="results.html#reading">results</a>.
+      </p>
+
+      <div class="callout warn">
+        <span class="label">Documentation drift</span>
+        <p>
+          The repository <code>README.md</code> refers to a launcher named
+          <code>IRIS_Lite.sh</code>, a <code>clips/</code> source directory and a storage path
+          of <code>/clipDrive/clips/</code>. The current tree uses
+          <code>startIrisLite.sh</code>, <code>Decision/</code> and
+          <code>/mnt/clipDrive/clips/</code> respectively. These pages follow the code.
+        </p>
+      </div>
+    </section>
+
+    <div class="page-nav">
+      <a href="results.html"><span>Previous</span>&larr; Results</a>
+      <a href="reference.html"><span>Next</span>Reference &rarr;</a>
+    </div>
+
+    <footer>
+      <p>
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
+        <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>

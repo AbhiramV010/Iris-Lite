@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Results &middot; Iris-Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Measured Iris-Lite performance on a Raspberry Pi 4B over a ten-minute instrumented run, plus known issues and design limits." />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+
+<body>
+
+  <div class="top-nav">
+    <div class="top-nav-inner">
+      <a class="wordmark" href="index.html">iris-lite</a>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="detection.html">Detection</a>
+        <a href="compression.html">Compression</a>
+        <a href="hardware.html">Hardware</a>
+        <a href="results.html" class="active">Results</a>
+        <a href="install.html">Install</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <div class="page-head">
+      <p class="eyebrow">05 &middot; Results &amp; limits</p>
+      <h1>What it actually costs</h1>
+      <p class="lede">
+        A ten-minute continuous run on a Raspberry Pi 4B with all six processes active, sampled
+        every 30 seconds. The interesting result is not the total &mdash; it is the shape of
+        the distribution, which shows the event-driven design working exactly as intended and
+        also shows where it is paying too much.
+      </p>
+    </div>
+
+    <section id="method">
+      <h2>Method</h2>
+
+      <div class="kv">
+        <div><dt>Hardware</dt><dd>Raspberry Pi 4B, 2 GB, passive and active cooling</dd></div>
+        <div><dt>Duration</dt><dd>600 seconds, continuous</dd></div>
+        <div><dt>Interval</dt><dd>30 seconds &mdash; 20 samples per process</dd></div>
+        <div><dt>Instrument</dt><dd><code>log/logger.sh</code>, summing <code>ps -o %cpu</code> per process name</dd></div>
+        <div><dt>Load</dt><dd>All six processes running, detectors firing naturally</dd></div>
+      </div>
+
+      <p>
+        Figures are per-process CPU as reported by <code>ps</code>, so they are shares of a
+        single core on a four-core part. A reading of 36% means roughly a third of one core, not
+        a third of the machine. The raw samples are in
+        <code>log/irisLiteLogs.csv</code>.
+      </p>
+
+      <div class="callout warn">
+        <span class="label">Caveat</span>
+        <p>
+          <code>ps %cpu</code> is a lifetime average of the process, not an instantaneous
+          reading, so it lags real behaviour and understates short spikes. It is the right tool
+          for comparing steady-state cost between processes and the wrong one for measuring
+          burst latency. Nothing here should be read as a latency measurement.
+        </p>
+      </div>
+    </section>
+
+    <section id="cpu">
+      <h2>CPU by process</h2>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Process</th>
+              <th class="num">Mean %</th>
+              <th class="num">Min</th>
+              <th class="num">Max</th>
+              <th class="num">Spread</th>
+              <th>Duty cycle</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Zone monitor</td><td class="num">36.05</td><td class="num">34.50</td><td class="num">37.50</td><td class="num">3.0</td><td>Always on</td></tr>
+            <tr><td>Camera</td><td class="num">21.75</td><td class="num">20.90</td><td class="num">22.50</td><td class="num">1.6</td><td>Always on</td></tr>
+            <tr><td>Tiered detection</td><td class="num">16.16</td><td class="num">0.25</td><td class="num">20.00</td><td class="num">19.8</td><td>Mostly on</td></tr>
+            <tr><td>Buffer manager</td><td class="num">14.44</td><td class="num">12.05</td><td class="num">19.85</td><td class="num">7.8</td><td>Always on</td></tr>
+            <tr><td>Listener</td><td class="num">4.31</td><td class="num">0.90</td><td class="num">16.10</td><td class="num">15.2</td><td>Event driven</td></tr>
+            <tr><td>Compression</td><td class="num">2.11</td><td class="num">0.35</td><td class="num">10.10</td><td class="num">9.8</td><td>Event driven</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The total sits at a mean of <strong>94.8%</strong> and a median of
+        <strong>94.3%</strong> of one core, against four available. Individual samples ranged
+        from 70.98 to 113.83.
+      </p>
+
+      <h3>Stability</h3>
+      <p>
+        Over the full run there were no crashes, no shared-memory faults and no dropped frames.
+        Resident memory held between 1.5 and 1.8&nbsp;GB against the 1.44&nbsp;GB the ring
+        reserves outright, and the package stayed at 68&nbsp;&deg;C.
+      </p>
+    </section>
+
+    <section id="reading">
+      <h2>Reading the numbers</h2>
+
+      <h3>The spread is the point</h3>
+      <p>
+        Look at the two event-driven components. The listener averages 4.31% and peaks at
+        16.10%; the compressor averages 2.11% and peaks at 10.10%. Both idle near zero and only
+        cost anything when something happens. That ratio &mdash; roughly 4:1 between peak and
+        mean &mdash; is the event-driven design showing up directly in the measurements, and it
+        is the single result the project was built to produce.
+      </p>
+      <p>
+        A conventional continuous-recording camera would show a flat line for its encoder at
+        something close to the compressor's peak, all day, whether or not anything happened.
+      </p>
+
+      <h3>Tiered detection behaves as designed</h3>
+      <p>
+        Tiered detection has the widest spread of anything measured: 0.25% to 20.00%. That is
+        the two-tier structure visible in the data. When tier one finds nothing, the process
+        costs almost nothing; when it promotes frames, tier two's entropy and contour work
+        pushes it to 20%. It sits near the top most of the time because the test scene was
+        rarely completely still.
+      </p>
+
+      <h3>The zone monitor is the problem</h3>
+      <p>
+        GSOC background subtraction costs 36% of a core and never stops. It is the most
+        expensive single component in the system, more than the camera capture, and it runs at
+        the same rate whether the lawn is empty or not.
+      </p>
+      <p>
+        This is a straightforward design inconsistency. The motion detector was carefully
+        tiered so that expensive work only runs when cheap work suggests it might be worth it;
+        the zone monitor has no equivalent, and it is the component that would benefit most.
+        Gating GSOC behind the same cheap CNT pass that already runs in
+        <code>detector_pipeline.py</code> is the obvious next change, and would likely reclaim
+        most of that 36%.
+      </p>
+
+      <h3>Preview windows</h3>
+      <p>
+        Roughly nine points of the measured total are <code>cv2.imshow</code> preview windows,
+        which exist for demonstration and would not run on a deployed unit. Since these
+        measurements were taken, the preview in <code>detector_pipeline.py</code> has been
+        removed; <code>main.py</code> and <code>zone_monitor.py</code> still render theirs, and
+        both fall back to headless operation when no display is attached.
+      </p>
+    </section>
+
+    <section id="known-issues">
+      <h2>Known issues</h2>
+      <p>
+        Defects in the current build, as distinct from the design limits below. These are things
+        that should be fixed rather than things that are inherent.
+      </p>
+
+      <div class="card-grid two">
+        <div class="card">
+          <h3>Trigger strings stop at the buffer manager</h3>
+          <p>
+            <code>main.py</code> writes only two indices into
+            <code>iris_concern_indices</code>, but the C++ side reads a struct that also
+            expects a 64-byte trigger string. The engine therefore always sees an empty trigger
+            and falls back to <code>"unknown"</code>.
+          </p>
+          <p class="note">
+            Effect: every clip is named <code>..._unknown.mp4</code>, and
+            <code>EventCluster</code>'s trigger-weight model collapses to its 0.50 default, so
+            it can no longer tell a gunshot from a grass overlap.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Swapped GPIO fields in the zone monitor</h3>
+          <p>
+            <code>zone_monitor.py</code> builds its <code>CaptureClass</code> with
+            <code>isMotionSensor=check_gpio(17)</code> and
+            <code>isDoorSensor=check_gpio(27)</code> &mdash; the reverse of every other
+            detector, where 17 is the door and 27 is motion.
+          </p>
+          <p class="note">
+            Effect: sensor metadata on grass-overlap events is inverted relative to events from
+            the other two detectors.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Per-frame CRF does not reach FFmpeg</h3>
+          <p>
+            Quality is computed per frame, but the encoder pipe is opened once per event with a
+            fixed bitrate on the command line. Changing it would mean starting a new file.
+          </p>
+          <p class="note">
+            Effect: adaptivity is fully calculated and logged, but what varies on disk is
+            per-clip rather than per-frame.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Timestamp-to-index mapping assumes exact 24 fps</h3>
+          <p>
+            The buffer manager converts event times to ring indices by multiplying elapsed
+            seconds by a hard-coded frame rate. If the write loop falls behind, the mapping
+            drifts.
+          </p>
+          <p class="note">
+            Effect: the extracted window sits slightly later than the real event. The
+            &plusmn;5&nbsp;s padding absorbs small drift rather than correcting it.
+          </p>
+        </div>
+        <div class="card">
+          <h3>No process supervision</h3>
+          <p>
+            The launcher starts six terminals and exits. Nothing monitors them and nothing
+            restarts them.
+          </p>
+          <p class="note">
+            Effect: if <code>startCamera.py</code> dies, the other five keep running happily
+            against a frozen frame, with no error surfaced anywhere.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Stale ring blocks survive a hard kill</h3>
+          <p>
+            <code>startCamera.py</code> unlinks its own block before recreating it, but the
+            1.44&nbsp;GB ring and its metadata blocks are reattached if they already exist.
+          </p>
+          <p class="note">
+            Effect: after an unclean shutdown the memory stays reserved, and the next run may
+            read frames left over from the previous one at the edges of a window.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="limits">
+      <h2>What it doesn't do</h2>
+      <p>
+        These are properties of the approach, not bugs. Fixing them means changing the design.
+      </p>
+
+      <h3>Detection can be fooled</h3>
+      <p>
+        Detection is motion- and region-based. Sudden lighting changes and fast movement across
+        the frame both produce false positives, and a slow, careful approach that never
+        accumulates fifty frames of centroid travel can be missed entirely. The entropy gate
+        rejects flat global changes, but it is a heuristic and it has a threshold.
+      </p>
+
+      <h3>The audio vocabulary is small</h3>
+      <p>
+        The model is trained on a small Freesound dataset and its accuracy reflects that. Six
+        concerning classes is a narrow vocabulary for the range of sounds a porch actually
+        produces, and anything outside them lands in whichever class is nearest in
+        spectrogram space rather than being rejected as unknown.
+      </p>
+
+      <h3>The zone monitor knows grass</h3>
+      <p>
+        The ground zone is found by an HSV threshold tuned for grass. Pointing the camera at
+        gravel, decking or concrete means retuning that range by hand. The zone is also
+        segmented exactly once at startup, so a scene that changes appearance &mdash; dusk,
+        snow, a parked car &mdash; is not re-learned.
+      </p>
+
+      <h3>Compression is a trade, not a free win</h3>
+      <p>
+        Spending less bitrate on low-activity regions is the entire point, and it means a clip's
+        dormant background is visibly softer than its subject. That is the intended behaviour.
+        It is still a trade, and on a static wide shot with a distant subject it is a trade in
+        the wrong direction.
+      </p>
+
+      <h3>One camera per Pi</h3>
+      <p>
+        At 95% of one core and 1.8&nbsp;GB of 2&nbsp;GB, there is no room for a second stream.
+        A hub design needs either more memory or an accelerator &mdash; a Coral Edge TPU would
+        move the neural work off the CPU &mdash; before one board could serve multiple cameras.
+      </p>
+    </section>
+
+    <section id="next">
+      <h2>Where it would go next</h2>
+      <ol>
+        <li>Gate GSOC behind a cheap first-tier pass, the way the motion detector already does. Largest single win available.</li>
+        <li>Widen the event shared-memory block so trigger strings reach the compressor, which switches on semantic clustering and gives clips meaningful filenames.</li>
+        <li>Derive ring indices from the timestamps already stored in <code>iris_indices</code> instead of assuming a constant frame rate.</li>
+        <li>Re-segment the ground zone periodically, or on a large luminance shift, rather than once at startup.</li>
+        <li>Add a supervisor that restarts a dead process and surfaces the failure.</li>
+      </ol>
+    </section>
+
+    <div class="page-nav">
+      <a href="hardware.html"><span>Previous</span>&larr; Hardware</a>
+      <a href="install.html"><span>Next</span>Install &rarr;</a>
+    </div>
+
+    <footer>
+      <p>
+        Raw sample data in <code>log/irisLiteLogs.csv</code>. Full analysis and lab report will
+        be published after the competition.
+      </p>
+      <p>
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
+        <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>

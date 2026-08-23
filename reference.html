@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reference &middot; Iris-Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Iris-Lite reference: tunable constants, shared-memory blocks, event schema, output naming and the source file map." />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+
+<body>
+
+  <div class="top-nav">
+    <div class="top-nav-inner">
+      <a class="wordmark" href="index.html">iris-lite</a>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="detection.html">Detection</a>
+        <a href="compression.html">Compression</a>
+        <a href="hardware.html">Hardware</a>
+        <a href="results.html">Results</a>
+        <a href="install.html">Install</a>
+        <a href="reference.html" class="active">Reference</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <div class="page-head">
+      <p class="eyebrow">07 &middot; Reference</p>
+      <h1>Constants and contracts</h1>
+      <p class="lede">
+        Every tunable value in the system, where it lives, and what happens when you change it.
+        Detector thresholds are module-level constants in Python; only the compression engine
+        reads a config file.
+      </p>
+    </div>
+
+    <section id="jump">
+      <div class="card-grid">
+        <a class="card" href="#buffer"><h3>Buffer &amp; capture</h3><p class="note">main.py, startCamera.py</p></a>
+        <a class="card" href="#motion-const"><h3>Motion detector</h3><p class="note">detector_pipeline.py</p></a>
+        <a class="card" href="#zone-const"><h3>Zone monitor</h3><p class="note">zone_monitor.py</p></a>
+        <a class="card" href="#audio-const"><h3>Audio listener</h3><p class="note">listener.py</p></a>
+        <a class="card" href="#compress-const"><h3>Compression engine</h3><p class="note">C++ constants</p></a>
+        <a class="card" href="#files"><h3>Source map</h3><p class="note">Repository layout</p></a>
+      </div>
+    </section>
+
+    <section id="buffer">
+      <h2>Buffer and capture</h2>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Constant</th><th class="num">Value</th><th>File</th><th>Effect if changed</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">W, H</td><td class="num">1920, 1080</td><td>startCamera.py</td><td>Capture resolution. Must match the ndarray shape in every consumer &mdash; there are four hard-coded copies of these dimensions.</td></tr>
+            <tr><td class="mono">P_W, P_H</td><td class="num">600, 450</td><td>startCamera.py</td><td>Size of the bottom-left motion-diff overlay. Demo only.</td></tr>
+            <tr><td class="mono">FPS</td><td class="num">24</td><td>main.py</td><td>Ring write rate. Also the divisor used to convert event timestamps into ring indices, so changing it changes both buffer length and event alignment.</td></tr>
+            <tr><td class="mono">BUFFER_MINUTES</td><td class="num">5</td><td>main.py</td><td>How far back an event can reach. Directly multiplies memory use.</td></tr>
+            <tr><td class="mono">FRAME_BUFFER_SIZE</td><td class="num">7,200</td><td>main.py</td><td>Derived, <code>FPS &times; 60 &times; BUFFER_MINUTES</code>. Must be mirrored in <code>SharedFrameBuffer.hpp</code>.</td></tr>
+            <tr><td class="mono">SLOT_SIZE</td><td class="num">200,000</td><td>main.py</td><td>Bytes per ring slot. Frames larger than this after a quality-30 retry are skipped. Must be mirrored in <code>SharedFrameBuffer.hpp</code>.</td></tr>
+            <tr><td class="mono">JPEG quality</td><td class="num">45, then 30</td><td>main.py</td><td>Primary and retry encode quality. Sets the size distribution of stored frames against the slot ceiling.</td></tr>
+            <tr><td class="mono">padding_frames</td><td class="num">120</td><td>main.py</td><td>Extra frames added each side of an event window &mdash; 5 s at 24 fps. Applied on top of each detector's own 5 s pad.</td></tr>
+            <tr><td class="mono">ADDRESS</td><td class="num">127.0.0.1:8989</td><td>all detectors</td><td>Event bus endpoint. Loopback only; there is no remote listener.</td></tr>
+            <tr><td class="mono">AUTHKEY</td><td class="mono">b'1000011'</td><td>all detectors</td><td>Shared secret for the connection handshake. Must match on both ends.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <span class="label">Mirrored values</span>
+        <p>
+          <code>FRAME_BUFFER_SIZE</code> and <code>SLOT_SIZE</code> exist independently in
+          Python (<code>main.py</code>) and C++ (<code>SharedFrameBuffer.hpp</code>, as
+          <code>BUFFER_SIZE</code> and <code>SLOT_SIZE</code>). Nothing checks that they agree.
+          Change one without the other and the compressor reads at the wrong stride, producing
+          decode failures rather than an error.
+        </p>
+      </div>
+    </section>
+
+    <section id="motion-const">
+      <h2>Motion detector</h2>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Constant</th><th class="num">Value</th><th>Tier</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">TARGET_FPS</td><td class="num">15</td><td>&mdash;</td><td>Analysis rate cap. The loop sleeps for whatever is left of the interval.</td></tr>
+            <tr><td class="mono">Analysis size</td><td class="num">640&times;360</td><td>&mdash;</td><td>Frame is downscaled before any processing.</td></tr>
+            <tr><td class="mono">SENSITIVITY</td><td class="num">0.10</td><td>1</td><td>Fraction of the foreground mask that must be non-zero. Divided by 640&times;480, so the effective threshold on a 640&times;360 frame is about 13.3%.</td></tr>
+            <tr><td class="mono">LUM_THRESH</td><td class="num">90</td><td>1</td><td>Grey levels of departure from the running mean that trigger a luminance event.</td></tr>
+            <tr><td class="mono">ALPHA</td><td class="num">0.05</td><td>1</td><td>EMA weight on the current frame's mean luminance. Lower is slower to adapt and more sensitive to sudden change.</td></tr>
+            <tr><td class="mono">Entropy floor</td><td class="num">3.0</td><td>2</td><td>Shannon entropy of pixels under the mask. Below this, the change is treated as flat and discarded.</td></tr>
+            <tr><td class="mono">Centroid distance</td><td class="num">20 px</td><td>2</td><td>Minimum inter-frame travel of the largest contour's centre to count as directional movement.</td></tr>
+            <tr><td class="mono">Persistence target</td><td class="num">50</td><td>2</td><td>Qualifying frames needed to raise an event. About 3.3 s at 15 fps.</td></tr>
+            <tr><td class="mono">Event pad</td><td class="num">&plusmn;5 s</td><td>&mdash;</td><td>Reported window, before the buffer manager adds its own pad.</td></tr>
+            <tr><td class="mono">Trigger string</td><td class="mono">tiered_cap</td><td>&mdash;</td><td>Fixed. Duration is always reported as 10.0 s.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="zone-const">
+      <h2>Zone monitor</h2>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Constant</th><th class="num">Value</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">TARGET_FPS</td><td class="num">15</td><td>Analysis rate cap.</td></tr>
+            <tr><td class="mono">HSV lower</td><td class="num">[25, 30, 20]</td><td>Lower bound of the ground-segmentation range. Tuned for grass.</td></tr>
+            <tr><td class="mono">HSV upper</td><td class="num">[95, 255, 255]</td><td>Upper bound. Hue 25&ndash;95 spans yellow-green through green.</td></tr>
+            <tr><td class="mono">GSOC nSamples</td><td class="num">20</td><td>Background samples held per pixel.</td></tr>
+            <tr><td class="mono">GSOC replaceRate</td><td class="num">0.003</td><td>Sample replacement rate. Low, so a stationary object stays foreground for a long time.</td></tr>
+            <tr><td class="mono">GSOC propagationRate</td><td class="num">0.01</td><td>How readily a background decision spreads to neighbouring pixels.</td></tr>
+            <tr><td class="mono">GSOC hitsThreshold</td><td class="num">32</td><td>Matches required before a pixel is classified as background.</td></tr>
+            <tr><td class="mono">Contours kept</td><td class="num">3</td><td>Largest foreground objects considered each frame.</td></tr>
+            <tr><td class="mono">Foot strip</td><td class="num">20 px</td><td>Height of the bottom slice of each bounding box used for overlap.</td></tr>
+            <tr><td class="mono">History window</td><td class="num">10 frames</td><td>Rolling average applied to the overlap pixel count.</td></tr>
+            <tr><td class="mono">Enter threshold</td><td class="num">&ge; 3 px</td><td>Average overlap that starts the contact timer.</td></tr>
+            <tr><td class="mono">Exit threshold</td><td class="num">&lt; 1 px</td><td>Average overlap that stops it. Separate from the enter threshold to give hysteresis.</td></tr>
+            <tr><td class="mono">Minimum duration</td><td class="num">2 s</td><td>Sustained contact required before an event is raised.</td></tr>
+            <tr><td class="mono">Trigger string</td><td class="mono">Grass Overlap</td><td>Fixed. Duration is the true measured contact time.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="audio-const">
+      <h2>Audio listener</h2>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Constant</th><th class="num">Value</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">RATE</td><td class="num">16,000</td><td>Sample rate in Hz.</td></tr>
+            <tr><td class="mono">CHUNK</td><td class="num">4,096</td><td>Samples per read &mdash; about 256 ms.</td></tr>
+            <tr><td class="mono">THRESHOLD</td><td class="num">0.08</td><td>RMS gate, roughly 72 dB SPL. Below this the model is never invoked.</td></tr>
+            <tr><td class="mono">Confidence floor</td><td class="num">0.45</td><td>Softmax confidence required to open a detection.</td></tr>
+            <tr><td class="mono">Inference window</td><td class="num">2 s</td><td>Trailing audio converted to a spectrogram.</td></tr>
+            <tr><td class="mono">Ring buffer</td><td class="num">3 s</td><td>In-process deque; the last 2 s of it feeds the model.</td></tr>
+            <tr><td class="mono">SHM ring</td><td class="num">300 s</td><td>Shared-memory audio history at float32.</td></tr>
+            <tr><td class="mono">n_fft</td><td class="num">2,048</td><td>FFT size, Hann-windowed.</td></tr>
+            <tr><td class="mono">hop_length</td><td class="num">327</td><td>Chosen so a 2 s window yields 98 time steps.</td></tr>
+            <tr><td class="mono">n_mels</td><td class="num">128</td><td>Mel filterbank bands.</td></tr>
+            <tr><td class="mono">Model input</td><td class="num">(128, 98, 1)</td><td>Normalised log-mel spectrogram, float32.</td></tr>
+            <tr><td class="mono">SOC</td><td class="num">[2,3,4,5,6,7]</td><td>Class indices treated as concerning. Index 1 (ambience) is excluded.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="compress-const">
+      <h2>Compression engine</h2>
+
+      <h4>config.json</h4>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Key</th><th class="num">Default</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">encode_width / height</td><td class="num">640 / 360</td><td>Output video resolution.</td></tr>
+            <tr><td class="mono">perceptual_width / height</td><td class="num">320 / 180</td><td>Resolution at which importance is scored.</td></tr>
+            <tr><td class="mono">fps</td><td class="num">24</td><td>Output frame rate. Reset to 24 with a warning if outside 1&ndash;60.</td></tr>
+            <tr><td class="mono">crf</td><td class="num">22</td><td>Base CRF. Currently loaded but superseded by the tier table.</td></tr>
+            <tr><td class="mono">use_faces / use_motion / use_edges</td><td class="num">true</td><td>Feature switches for the importance signals.</td></tr>
+            <tr><td class="mono">face_model_path</td><td class="mono">&hellip;/haarcascade_frontalface_default.xml</td><td>Cascade file. Failure to load disables the face term with a warning rather than aborting.</td></tr>
+            <tr><td class="mono">face_detect_interval</td><td class="num">10</td><td>Run the cascade every Nth frame. Reset to 10 if non-positive.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Compiled constants</h4>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Constant</th><th class="num">Value</th><th>File</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">BUFFER_SIZE</td><td class="num">7,200</td><td>SharedFrameBuffer.hpp</td><td>Ring slots. Must match <code>main.py</code>.</td></tr>
+            <tr><td class="mono">SLOT_SIZE</td><td class="num">200,000</td><td>SharedFrameBuffer.hpp</td><td>Bytes per slot. Must match <code>main.py</code>.</td></tr>
+            <tr><td class="mono">Signal weights</td><td class="num">.30/.20/.20/.20/.10</td><td>ImportanceEngine.cpp</td><td>Motion, spatial, region, temporal, face.</td></tr>
+            <tr><td class="mono">Motion EMA</td><td class="num">0.7 / 0.3</td><td>ImportanceEngine.cpp</td><td>Previous vs current weighting.</td></tr>
+            <tr><td class="mono">Motion noise floor</td><td class="num">0.015</td><td>ImportanceEngine.cpp</td><td>Mean absolute difference below this is zeroed.</td></tr>
+            <tr><td class="mono">Canny thresholds</td><td class="num">50 / 150</td><td>ImportanceEngine.cpp</td><td>Edge detection bounds for the spatial and region terms.</td></tr>
+            <tr><td class="mono">Region scale</td><td class="num">1.35&times;</td><td>ImportanceEngine.cpp</td><td>Boost applied to centre-half edge density.</td></tr>
+            <tr><td class="mono">Temporal falloff</td><td class="mono">exp(-d&sup2;/80)</td><td>ImportanceEngine.cpp</td><td>Gaussian centred on the event midpoint.</td></tr>
+            <tr><td class="mono">Face decay</td><td class="num">0.85&times;</td><td>ImportanceEngine.cpp</td><td>Applied on detection frames where no face is found.</td></tr>
+            <tr><td class="mono">Score normaliser</td><td class="mono">log1p(x&middot;7)/log1p(7)</td><td>ImportanceEngine.cpp</td><td>Lifts the low end of the raw weighted sum.</td></tr>
+            <tr><td class="mono">CRF tiers</td><td class="num">20 / 24 / 28 / 32</td><td>CompressionPolicy.cpp</td><td>At importance &gt; 0.75 / 0.50 / 0.30 / otherwise.</td></tr>
+            <tr><td class="mono">CRF clamp</td><td class="num">18 &ndash; 40</td><td>CompressionOrchestrator.cpp</td><td>After pressure is added.</td></tr>
+            <tr><td class="mono">Pressure weights</td><td class="num">0.7 CPU / 0.3 thermal</td><td>SystemGovernor.cpp</td><td>Thermal normalised against 100 &deg;C.</td></tr>
+            <tr><td class="mono">Pressure penalty</td><td class="num">up to 25%</td><td>CompressionPolicy.cpp</td><td>Reduction applied to fused importance.</td></tr>
+            <tr><td class="mono">Drop gate</td><td class="num">&gt; 0.96 / &lt; 0.25</td><td>CompressionEngine.cpp</td><td>Pressure and fused importance that must both hold before a frame is discarded.</td></tr>
+            <tr><td class="mono">Continuity protection</td><td class="num">6 frames</td><td>CompressionOrchestrator.cpp</td><td>Frames after a high-importance one that cannot be dropped.</td></tr>
+            <tr><td class="mono">BASE_GAP</td><td class="num">120 frames</td><td>EventCluster.cpp</td><td>Merge window at low event density &mdash; 5 s at 24 fps, widening up to 3&times;.</td></tr>
+            <tr><td class="mono">Merge similarity</td><td class="num">&gt; 0.55</td><td>EventCluster.cpp</td><td>Trigger-weight similarity required to merge.</td></tr>
+            <tr><td class="mono">Flush trigger</td><td class="num">3 buffered / 10 seen</td><td>EventCluster.cpp</td><td>Either condition flushes the cluster buffer.</td></tr>
+            <tr><td class="mono">Bitrate map</td><td class="mono">2000 - (crf-18)&times;80</td><td>H264Encoder.cpp</td><td>kbps, clamped to 500&ndash;4000, for the hardware encoder.</td></tr>
+            <tr><td class="mono">Output path</td><td class="mono">/mnt/clipDrive/clips/</td><td>StorageManager.cpp</td><td>Created at startup if absent.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="schema">
+      <h2>Event schema</h2>
+      <p>
+        The record every detector sends over the event bus. Defined in
+        <code>Decision/captureinfo.py</code> and pickled by
+        <code>multiprocessing.connection</code>.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Contents</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono">startTime</td><td>str</td><td><code>HH:MM:SS</code>, already padded 5 s earlier than the real start.</td></tr>
+            <tr><td class="mono">endTime</td><td>str</td><td><code>HH:MM:SS</code>, already padded 5 s later.</td></tr>
+            <tr><td class="mono">trigger</td><td>str</td><td>Free text. <code>tiered_cap</code>, <code>Grass Overlap</code>, or a label with confidence such as <code>Gunshot (81.2%)</code>.</td></tr>
+            <tr><td class="mono">duration</td><td>float?</td><td>Seconds. Fixed at 10.0 for motion; measured for zone and audio.</td></tr>
+            <tr><td class="mono">isMotionSensor</td><td>bool?</td><td>PIR on BCM 27 fired within the last 10 s. Swapped with the door field in <code>zone_monitor.py</code> &mdash; see <a href="results.html#known-issues">known issues</a>.</td></tr>
+            <tr><td class="mono">isDoorSensor</td><td>bool?</td><td>Reed switch on BCM 17 fired within the last 10 s.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note">
+        Dates are not carried. <code>main.py</code> combines the received time with
+        <code>datetime.date.today()</code>, so an event spanning midnight resolves incorrectly.
+      </p>
+
+      <h3>Clip naming</h3>
+      <pre><code>iris_&lt;startFrame&gt;_&lt;endFrame&gt;_&lt;trigger&gt;.mp4
+
+<span class="c"># e.g. iris_3204_3684_unknown.mp4</span></code></pre>
+      <p class="note">
+        Frame numbers are ring indices, not timestamps, so they wrap every five minutes and are
+        not globally ordered.
+      </p>
+    </section>
+
+    <section id="files">
+      <h2>Source map</h2>
+
+      <pre><code>Iris-Lite/
+├── Decision/                  <span class="c"># Python: capture, buffer, detection</span>
+│   ├── startCamera.py         <span class="c"># V4L2 capture → iris_live_frame</span>
+│   ├── main.py                <span class="c"># ring buffer + event bus listener</span>
+│   ├── detector_pipeline.py   <span class="c"># two-tier motion filter</span>
+│   ├── zone_monitor.py        <span class="c"># ground-zone intrusion</span>
+│   ├── listener.py            <span class="c"># audio classification</span>
+│   ├── sound_model.py         <span class="c"># model definition (reference only)</span>
+│   ├── sound_model.tflite     <span class="c"># trained weights</span>
+│   ├── captureinfo.py         <span class="c"># CaptureClass dataclass</span>
+│   └── sensor_helper.py       <span class="c"># GPIO, Linux-gated</span>
+│
+├── Compression/               <span class="c"># C++: P.E.L.I.C.A.N.</span>
+│   ├── src/
+│   │   ├── main.cpp                     <span class="c"># SHM poll loop</span>
+│   │   ├── CompressionEngine.cpp        <span class="c"># queue, worker, per-event pipeline</span>
+│   │   ├── CompressionOrchestrator.cpp  <span class="c"># fusion, drop veto, CRF</span>
+│   │   ├── CompressionPolicy.cpp        <span class="c"># tier tables</span>
+│   │   ├── ImportanceEngine.cpp         <span class="c"># five-signal scoring</span>
+│   │   ├── ImportanceMemory.cpp         <span class="c"># per-trigger bias (unused)</span>
+│   │   ├── SystemGovernor.cpp           <span class="c"># CPU + thermal pressure</span>
+│   │   ├── EventCluster.cpp             <span class="c"># merge and rank</span>
+│   │   ├── SharedFrameBuffer.cpp        <span class="c"># read-only ring mapping</span>
+│   │   ├── H264Encoder.cpp              <span class="c"># FFmpeg pipe</span>
+│   │   ├── StorageManager.cpp           <span class="c"># output paths</span>
+│   │   ├── Dashboard.cpp                <span class="c"># terminal status view</span>
+│   │   ├── Config.cpp / logging.cpp
+│   │   └── EventFrameReconstructor.cpp  <span class="c"># not in the build</span>
+│   ├── include/
+│   ├── config/config.json
+│   └── CMakeLists.txt
+│
+├── demos/                     <span class="c"># single-detector launchers</span>
+├── log/                       <span class="c"># logger.sh, CPU samples, graph</span>
+├── assets/site.css            <span class="c"># this documentation</span>
+├── IrisLiteCase.FCStd         <span class="c"># FreeCAD enclosure</span>
+├── startIrisLite.sh           <span class="c"># main launcher</span>
+└── README.md</code></pre>
+
+      <p class="note">
+        <code>EventFrameReconstructor.cpp</code> and <code>ImportanceMemory</code> are present
+        but not wired in &mdash; the former is absent from <code>CMakeLists.txt</code> and calls
+        a <code>SharedFrameBuffer</code> method that no longer exists, and the latter is
+        constructed with a null pointer, so trigger-specific bias is always zero.
+      </p>
+    </section>
+
+    <div class="page-nav">
+      <a href="install.html"><span>Previous</span>&larr; Install</a>
+      <a href="index.html"><span>Back to</span>Overview &rarr;</a>
+    </div>
+
+    <footer>
+      <p>
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
+        <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>

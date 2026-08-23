@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Architecture &middot; Iris-Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="The six Iris-Lite processes, the shared-memory blocks they coordinate through, and how an event travels from detector to encoder." />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+
+<body>
+
+  <div class="top-nav">
+    <div class="top-nav-inner">
+      <a class="wordmark" href="index.html">iris-lite</a>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="architecture.html" class="active">Architecture</a>
+        <a href="detection.html">Detection</a>
+        <a href="compression.html">Compression</a>
+        <a href="hardware.html">Hardware</a>
+        <a href="results.html">Results</a>
+        <a href="install.html">Install</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <div class="page-head">
+      <p class="eyebrow">01 &middot; Architecture</p>
+      <h1>Six processes, one buffer</h1>
+      <p class="lede">
+        Iris-Lite is not one program. It is six that agree on where the pixels live. Everything
+        below follows from that: how they start, what they share, and what they refuse to
+        send each other.
+      </p>
+    </div>
+
+    <section id="processes">
+      <h2>The processes</h2>
+      <p>
+        Each runs as its own OS process, launched by <code>startIrisLite.sh</code> in a separate
+        terminal window. There is no supervisor and no restart logic &mdash; if one dies, the
+        others keep running with a stale or missing input, which is a known weakness rather
+        than a feature.
+      </p>
+
+      <div class="procs">
+        <div class="proc">
+          <div class="proc-name">startCamera.py</div>
+          <div class="proc-desc"><p>Opens <code>/dev/video0</code> through V4L2, forces MJPG at 1920&times;1080, and copies every frame into the <code>iris_live_frame</code> shared block. It also renders a live motion-diff overlay into the bottom-left 600&times;450 corner of the frame, which is a demo aid rather than part of the pipeline.</p></div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">main.py</div>
+          <div class="proc-desc"><p>The buffer manager. Reads the live frame, re-encodes it as JPEG at quality 45, and writes it into a 7,200-slot ring at 24&nbsp;fps. Also hosts the event bus listener and translates incoming event timestamps into ring indices.</p></div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">detector_pipeline.py</div>
+          <div class="proc-desc"><p>The two-tier motion filter. A cheap always-on pass decides whether the expensive entropy-and-centroid pass is worth running.</p></div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">zone_monitor.py</div>
+          <div class="proc-desc"><p>Segments a ground region once at startup, then watches for a foreground object's feet entering it and staying there.</p></div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">listener.py</div>
+          <div class="proc-desc"><p>Gates on microphone volume, then classifies two-second windows of audio with a CNN trained for this project.</p></div>
+        </div>
+        <div class="proc">
+          <div class="proc-name">PerceptualCompressor</div>
+          <div class="proc-desc"><p>The C++ engine. Polls <code>iris_concern_indices</code> for a new frame range, then reads that range straight out of the ring, scores it and encodes it.</p></div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <span class="label">Why six</span>
+        <p>
+          Python's GIL makes a single-process design pointless here: the three detectors are all
+          CPU-bound OpenCV work and would serialise. Separate processes let the kernel put them
+          on separate cores of the Pi's four, and let one detector crash without taking the
+          camera down with it.
+        </p>
+      </div>
+    </section>
+
+    <section id="memory">
+      <h2>Shared memory</h2>
+      <p>
+        All coordination happens through POSIX shared memory. Python creates the blocks through
+        <code>multiprocessing.shared_memory</code>; the C++ side attaches to the same names with
+        <code>shm_open</code> and <code>mmap</code>, read-only.
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Block</th><th>Size</th><th>Written by</th><th>Contents</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">iris_live_frame</td>
+              <td class="num">6.22 MB</td>
+              <td>startCamera.py</td>
+              <td>One raw BGR frame, 1920&times;1080&times;3. Overwritten in place every capture.</td>
+            </tr>
+            <tr>
+              <td class="mono">iris_frame_buffer_data</td>
+              <td class="num">1.44 GB</td>
+              <td>main.py</td>
+              <td>The ring itself &mdash; 7,200 slots of 200,000 bytes, each holding one JPEG.</td>
+            </tr>
+            <tr>
+              <td class="mono">iris_frame_sizes</td>
+              <td class="num">28.8 KB</td>
+              <td>main.py</td>
+              <td>Byte length of the JPEG in each slot, as <code>uint32</code>. A slot with size 0 is unwritten.</td>
+            </tr>
+            <tr>
+              <td class="mono">iris_frame_head_tail</td>
+              <td class="num">16 B</td>
+              <td>main.py</td>
+              <td>Two <code>uint64</code> ring pointers. The compressor reads head to know how far the writer has got.</td>
+            </tr>
+            <tr>
+              <td class="mono">iris_concern_indices</td>
+              <td class="num">16 B</td>
+              <td>main.py</td>
+              <td>The current event window as a start and end ring index. This is the entire Python&nbsp;&rarr;&nbsp;C++ interface.</td>
+            </tr>
+            <tr>
+              <td class="mono">iris_indices</td>
+              <td class="num">115.2 KB</td>
+              <td>main.py</td>
+              <td>Per-slot wall-clock timestamp and global frame counter. Populated but not currently consumed.</td>
+            </tr>
+            <tr>
+              <td class="mono">iris_lite_audio</td>
+              <td class="num">19.2 MB</td>
+              <td>listener.py</td>
+              <td>A five-minute rolling audio ring at 16&nbsp;kHz float32, kept for offline inspection.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Detectors attach their own read-only view of <code>iris_live_frame</code> rather than
+        receiving copies. Adding a fourth detector therefore costs CPU but no extra memory,
+        which is the main reason the design scales sideways at all on 2&nbsp;GB.
+      </p>
+
+      <div class="callout warn">
+        <span class="label">Memory budget</span>
+        <p>
+          The ring reserves 1.44&nbsp;GB whether or not the slots are full, on a board with
+          2&nbsp;GB total. Measured RSS across the whole system sits between 1.5 and
+          1.8&nbsp;GB. There is no headroom for a second camera stream, and that constraint
+          drives most of the resolution choices elsewhere in the system.
+        </p>
+      </div>
+    </section>
+
+    <section id="ring">
+      <h2>The ring buffer</h2>
+      <p>
+        <code>main.py</code> runs a fixed 24&nbsp;fps loop. Each iteration it JPEG-encodes the
+        current live frame at quality 45, and if that comes out larger than the 200&nbsp;KB slot
+        ceiling it retries at quality 30. If the frame still doesn't fit, it is skipped
+        entirely &mdash; the loop would rather lose one frame than corrupt the slot boundary.
+      </p>
+      <p>
+        Head advances on every write. When head catches tail, tail is pushed forward too, so the
+        oldest frame is silently dropped. At 24&nbsp;fps over 7,200 slots the ring holds exactly
+        five minutes.
+      </p>
+
+      <pre><code>FPS               = 24
+BUFFER_MINUTES    = 5
+FRAME_BUFFER_SIZE = 24 * 60 * 5   <span class="c"># 7,200 slots</span>
+SLOT_SIZE         = 200_000       <span class="c"># bytes per slot</span></code></pre>
+
+      <p>
+        Storing JPEGs rather than raw frames is what makes the five-minute window affordable.
+        Raw 1080p BGR would need 6.22&nbsp;MB per frame, or roughly 45&nbsp;GB for the same
+        window. The cost is that the compressor has to decode every frame it wants to look at.
+      </p>
+    </section>
+
+    <section id="bus">
+      <h2>The event bus</h2>
+      <p>
+        Detectors talk to the buffer manager over a <code>multiprocessing.connection</code>
+        socket on <code>127.0.0.1:8989</code>, authenticated with a shared key. Nothing but a
+        small record ever crosses it &mdash; no frames, no masks, no audio.
+      </p>
+
+      <pre><code>@dataclass
+class CaptureClass:
+    startTime: str                    <span class="c"># "HH:MM:SS"</span>
+    endTime: str                      <span class="c"># "HH:MM:SS"</span>
+    trigger: str                      <span class="c"># e.g. "Gunshot (81.2%)"</span>
+    duration: Optional[float] = None
+    isMotionSensor: Optional[bool] = None
+    isDoorSensor: Optional[bool] = None</code></pre>
+
+      <p>
+        Keeping frames off the bus is deliberate. A detector that shipped its 640&times;360
+        working frame to the manager on every trigger would be moving about 700&nbsp;KB per
+        event through a Python pickle round-trip, and the manager already has the same pixels
+        mapped. Sending timestamps instead reduces an event to a few hundred bytes.
+      </p>
+    </section>
+
+    <section id="resolution">
+      <h2>From timestamp to frame index</h2>
+      <p>
+        Detectors know when something happened in wall-clock time. The compressor needs ring
+        indices. <code>main.py</code> bridges the two by counting backwards from the current
+        head at a known frame rate.
+      </p>
+
+      <pre><code>padding_frames = 5 * FPS                              <span class="c"># 120 frames each side</span>
+start_offset   = int((now - start_ts) * FPS) + padding_frames
+end_offset     = int((now - end_ts)   * FPS) - padding_frames
+
+concern_indices[0] = (curr_head - max(0, start_offset)) % FRAME_BUFFER_SIZE
+concern_indices[1] = (curr_head - max(0, end_offset))   % FRAME_BUFFER_SIZE</code></pre>
+
+      <p>
+        The five-second padding on each end is why a clip never opens mid-incident. Detectors
+        already pad their own reported window by five seconds, so a ten-second trigger becomes
+        a clip with roughly ten seconds of lead-in and lead-out around it &mdash; footage that
+        was already sitting in the ring before anything noticed it was interesting.
+      </p>
+
+      <div class="callout">
+        <span class="label">Assumption</span>
+        <p>
+          This arithmetic assumes the ring is filling at exactly 24&nbsp;fps. If
+          <code>main.py</code> falls behind &mdash; a slow JPEG encode, a skipped oversized
+          frame &mdash; the mapping drifts, and the extracted window sits slightly later in
+          time than the event actually was. The generous padding absorbs small drift; it does
+          not fix it.
+        </p>
+      </div>
+    </section>
+
+    <section id="handoff">
+      <h2>Handing off to C++</h2>
+      <p>
+        The compressor's main loop is a poll. It reads the two indices, compares them against
+        the last pair it saw, and does nothing until they change.
+      </p>
+
+      <pre><code>while (true) {
+    uint64_t start = shared-&gt;startFrame;
+    uint64_t end   = shared-&gt;endFrame;
+
+    if ((start == 0 &amp;&amp; end == 0) ||
+        (start == lastStart &amp;&amp; end == lastEnd)) {
+        sleep_for(50ms);
+        continue;
+    }
+
+    engine.enqueueEvent({ start, end, trigger });
+}</code></pre>
+
+      <p>
+        A new pair is pushed onto an internal queue and a worker thread picks it up, so a second
+        event arriving mid-encode is queued rather than dropped. The engine also refuses to read
+        past the writer: before decoding slot <em>i</em> it checks the head pointer, and waits
+        rather than reading a slot the camera loop hasn't filled yet.
+      </p>
+
+      <div class="callout warn">
+        <span class="label">Known gap</span>
+        <p>
+          The C++ side expects the event block to carry a 64-byte trigger string alongside the
+          two indices, but <code>main.py</code> only ever writes the indices. In the current
+          build the trigger therefore arrives empty and the engine falls back to
+          <code>"unknown"</code>, which flattens <code>EventCluster</code>'s trigger-weight
+          model to its default and puts <code>unknown</code> in every clip filename. The
+          detection metadata is carried correctly over the event bus &mdash; it just stops at
+          <code>main.py</code>. See <a href="results.html#known-issues">known issues</a>.
+        </p>
+      </div>
+    </section>
+
+    <section id="startup">
+      <h2>Startup order</h2>
+      <p>
+        The launcher starts processes in a fixed sequence with sleeps between them, because
+        several of them will exit immediately if their input block does not exist yet.
+      </p>
+
+      <ol>
+        <li><code>main.py</code> &mdash; creates every ring block, then blocks waiting for the live frame.</li>
+        <li><code>startCamera.py</code> &mdash; creates <code>iris_live_frame</code>. Given five seconds, since camera initialisation is the slowest step.</li>
+        <li><code>detector_pipeline.py</code>, <code>listener.py</code>, <code>zone_monitor.py</code> &mdash; each attaches to the live frame and raises <code>OSError</code> if it is missing.</li>
+        <li><code>PerceptualCompressor</code> &mdash; retries <code>shm_open</code> for up to 20 seconds before giving up.</li>
+      </ol>
+
+      <p>
+        <code>startCamera.py</code> unlinks any stale <code>iris_live_frame</code> before
+        creating its own, so a hard kill of the previous run does not block the next one. The
+        ring blocks have no such cleanup and are reattached if they already exist.
+      </p>
+    </section>
+
+    <div class="page-nav">
+      <a href="index.html"><span>Previous</span>&larr; Overview</a>
+      <a href="detection.html"><span>Next</span>Detection &rarr;</a>
+    </div>
+
+    <footer>
+      <p>
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
+        <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>

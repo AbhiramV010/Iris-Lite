@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hardware &middot; Iris-Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Iris-Lite hardware: the Raspberry Pi 4B build, sensor wiring, printed enclosure, thermals, and the carbon-aware charging board." />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+
+<body>
+
+  <div class="top-nav">
+    <div class="top-nav-inner">
+      <a class="wordmark" href="index.html">iris-lite</a>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="detection.html">Detection</a>
+        <a href="compression.html">Compression</a>
+        <a href="hardware.html" class="active">Hardware</a>
+        <a href="results.html">Results</a>
+        <a href="install.html">Install</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <div class="page-head">
+      <p class="eyebrow">04 &middot; Hardware &amp; power</p>
+      <h1>The physical unit</h1>
+      <p class="lede">
+        One Raspberry Pi 4B, two USB peripherals, two GPIO sensors and a printed case. The only
+        custom electronics in the project sits outside all of that, between the wall and the
+        battery, deciding when it is a good time to charge.
+      </p>
+    </div>
+
+    <section id="bom">
+      <h2>Bill of materials</h2>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Part</th><th>Specification</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Compute</td>
+              <td>Raspberry Pi 4B, 2&nbsp;GB</td>
+              <td>Four Cortex-A72 cores. The 2&nbsp;GB variant is the binding constraint on the whole design.</td>
+            </tr>
+            <tr>
+              <td>Camera</td>
+              <td>USB, MJPG-capable at 1920&times;1080</td>
+              <td>MJPG matters &mdash; a YUYV-only camera saturates USB bandwidth at 1080p and the capture loop stalls.</td>
+            </tr>
+            <tr>
+              <td>Microphone</td>
+              <td>USB, mono or stereo</td>
+              <td>Enumerated by name; the listener prefers a device matching <code>usb</code> or <code>hw</code>.</td>
+            </tr>
+            <tr>
+              <td>Door sensor</td>
+              <td>Reed switch, BCM pin 17</td>
+              <td>Normally closed, pulled up internally, read on falling edge.</td>
+            </tr>
+            <tr>
+              <td>Motion sensor</td>
+              <td>PIR, BCM pin 27</td>
+              <td>Same wiring pattern as the reed switch.</td>
+            </tr>
+            <tr>
+              <td>Cooling</td>
+              <td>Passive heatsink plus active fan</td>
+              <td>Not optional at this workload &mdash; see thermals below.</td>
+            </tr>
+            <tr>
+              <td>Clip storage</td>
+              <td>Drive mounted at <code>/mnt/clipDrive</code></td>
+              <td>Anything writable. Only clips are written here; the buffer never touches it.</td>
+            </tr>
+            <tr>
+              <td>Enclosure</td>
+              <td>FreeCAD model, <code>IrisLiteCase.FCStd</code></td>
+              <td>In the repository root, for printing.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="wiring">
+      <h2>Sensor wiring</h2>
+      <p>
+        Both sensors use the same pattern: one leg to the GPIO pin, one to ground, with the
+        Pi's internal pull-up doing the rest. No external resistors.
+      </p>
+
+      <pre><code>gpio.setmode(gpio.BCM)
+gpio.setup(pin, gpio.IN, pull_up_down=gpio.PUD_UP)
+gpio.add_event_detect(pin, gpio.FALLING,
+                      callback=update_time,
+                      bouncetime=200)</code></pre>
+
+      <p>
+        The callback records a timestamp rather than setting a flag. When a detector builds a
+        <code>CaptureClass</code> it asks whether the pin fired within the last ten seconds,
+        which is the question that actually matters &mdash; a reed switch closes for a few
+        milliseconds as a door swings, and polling the pin level at event-construction time
+        would almost always read nothing.
+      </p>
+
+      <div class="callout">
+        <span class="label">Pin numbering</span>
+        <p>
+          BCM numbering throughout, not physical pin numbers. BCM&nbsp;17 is physical pin 11 and
+          BCM&nbsp;27 is physical pin 13.
+        </p>
+      </div>
+    </section>
+
+    <section id="thermals">
+      <h2>Thermals and load</h2>
+      <p>
+        Over a ten-minute instrumented run with all six processes active, the package settled at
+        <strong>68&nbsp;&deg;C</strong> with both passive and active cooling fitted. The Pi 4B
+        begins throttling at 80&nbsp;&deg;C, so there is headroom, but not a large amount of it
+        for a sealed outdoor enclosure in summer.
+      </p>
+      <p>
+        This is also the reason <code>SystemGovernor</code> reads the thermal zone at all. The
+        compressor is the only component that can voluntarily reduce its own load, and it uses
+        temperature as 30% of its pressure signal specifically so that a warm board produces
+        cheaper encodes before the kernel starts throttling every core.
+      </p>
+      <p>
+        Full CPU figures are on the <a href="results.html">results page</a>.
+      </p>
+    </section>
+
+    <section id="charging">
+      <h2>Carbon-aware charging</h2>
+      <p>
+        Charging is handled entirely off-board by a separate custom circuit, so nothing on this
+        page changes if it is left out &mdash; the Pi simply runs from mains like any other.
+      </p>
+
+      <div class="kv">
+        <div><dt>Microcontroller</dt><dd>ESP32-C3-WROOM-02</dd></div>
+        <div><dt>Board</dt><dd>Custom, designed in KiCad</dd></div>
+        <div><dt>Data source</dt><dd>Green Software Foundation Carbon Aware SDK, over Wi-Fi</dd></div>
+        <div><dt>Control</dt><dd>Gates the charge line to the battery</dd></div>
+        <div><dt>Repository</dt><dd><a href="https://github.com/AbhiramV010/CarbonAwareCharge">AbhiramV010/CarbonAwareCharge</a></dd></div>
+      </div>
+
+      <p>
+        The unit runs from its battery by default and tops up when the grid it is attached to is
+        running clean. Grid carbon intensity swings substantially over a day depending on how
+        much of the local mix is renewable, and a device that only needs to charge
+        <em>sometime</em> can wait for the cheap end of that curve without any change in
+        behaviour that a user would notice.
+      </p>
+
+      <div class="callout">
+        <span class="label">Failure mode</span>
+        <p>
+          A status GPIO blinks when Wi-Fi is unavailable or the carbon query fails. The board
+          fails loudly rather than quietly charging on dirty power, which is the right default
+          for a feature whose entire value is in <em>when</em> it acts &mdash; a silent
+          fallback would be indistinguishable from the feature working.
+        </p>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <h2>Privacy by construction</h2>
+      <p>
+        The privacy properties here are mostly consequences of the architecture rather than
+        features added on top of it.
+      </p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3>Nothing is uploaded</h3>
+          <p>There is no cloud account and no network path out for video. The only outbound
+          network traffic in the whole system is the charging board's carbon-intensity query,
+          and that is on a different microcontroller.</p>
+        </div>
+        <div class="card">
+          <h3>No identification</h3>
+          <p>Face detection exists as a Haar cascade feeding one 10% term of the importance
+          score. It answers "is there a face in this frame", never "whose". No embeddings are
+          computed and nothing is stored between frames but a decaying float.</p>
+        </div>
+        <div class="card">
+          <h3>Most footage is never written</h3>
+          <p>The rolling five minutes lives in RAM and is overwritten in place. Video that no
+          detector flagged is gone within five minutes and was never on disk at any point.</p>
+        </div>
+        <div class="card">
+          <h3>Privacy zones</h3>
+          <p>User-defined regions can be excluded from processing, surfacing only as abstract
+          movement rather than as image data.</p>
+        </div>
+      </div>
+
+      <p>
+        The RAM buffer has a hardware benefit too. An SD card rewritten continuously at
+        24&nbsp;fps wears out its flash cells on a predictable schedule; DRAM does not care.
+        Only clips that survived detection are ever committed to the storage drive.
+      </p>
+    </section>
+
+    <div class="page-nav">
+      <a href="compression.html"><span>Previous</span>&larr; Compression</a>
+      <a href="results.html"><span>Next</span>Results &rarr;</a>
+    </div>
+
+    <footer>
+      <p>
+        Charging circuit designed and built separately &mdash;
+        <a href="https://github.com/AbhiramV010/CarbonAwareCharge">AbhiramV010/CarbonAwareCharge</a>.
+        Raspberry Pi 4B on loan from Macmeet B.
+      </p>
+      <p>
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
+        <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>

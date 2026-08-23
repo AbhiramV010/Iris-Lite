@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Detection &middot; Iris-Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="The three Iris-Lite detectors: a two-tier motion filter, a ground-zone monitor, and an audio classifier trained from scratch." />
+  <link rel="stylesheet" href="assets/site.css" />
+</head>
+
+<body>
+
+  <div class="top-nav">
+    <div class="top-nav-inner">
+      <a class="wordmark" href="index.html">iris-lite</a>
+      <nav class="nav-links">
+        <a href="index.html">Overview</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="detection.html" class="active">Detection</a>
+        <a href="compression.html">Compression</a>
+        <a href="hardware.html">Hardware</a>
+        <a href="results.html">Results</a>
+        <a href="install.html">Install</a>
+        <a href="reference.html">Reference</a>
+      </nav>
+    </div>
+  </div>
+
+  <div class="page">
+
+    <div class="page-head">
+      <p class="eyebrow">02 &middot; Detection</p>
+      <h1>Deciding something happened</h1>
+      <p class="lede">
+        Three independent detectors, each with its own idea of what counts. Any one of them can
+        raise an event on its own, none of them can veto another, and all three analyse at
+        640&times;360 and cap themselves at 15&nbsp;fps so that the four cores have room left
+        for the camera and the buffer.
+      </p>
+    </div>
+
+    <section id="shared-shape">
+      <h2>What they have in common</h2>
+      <p>
+        Every detector attaches read-only to <code>iris_live_frame</code>, copies the current
+        frame, downscales it, and runs its own loop. When one decides an event has occurred it
+        builds a <code>CaptureClass</code>, pads the window by five seconds at each end, stamps
+        the current GPIO state onto it, and sends it to the buffer manager over the event bus.
+      </p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3>Motion filter</h3>
+          <p class="note">detector_pipeline.py</p>
+          <p>Two tiers. Cheap background subtraction and luminance tracking gate an expensive
+          entropy and centroid-persistence pass.</p>
+        </div>
+        <div class="card">
+          <h3>Zone monitor</h3>
+          <p class="note">zone_monitor.py</p>
+          <p>Segments walkable ground once at startup, then watches for the base of a
+          foreground object resting inside it.</p>
+        </div>
+        <div class="card">
+          <h3>Audio classifier</h3>
+          <p class="note">listener.py</p>
+          <p>A volume gate in front of a small CNN that scores two-second mel spectrograms
+          against seven sound classes.</p>
+        </div>
+      </div>
+
+      <p>
+        The five-second pad matters more than it looks. A detector needs time to become
+        confident &mdash; fifty consecutive frames of motion, two seconds of sustained ground
+        contact &mdash; so by the time it fires, the interesting part is already in the past.
+        The pad reaches back into the ring and recovers it.
+      </p>
+    </section>
+
+    <section id="motion">
+      <h2>Two-tier motion filter</h2>
+      <p>
+        The premise is that most frames are boring and proving it should be nearly free. Tier
+        one runs on every frame and is allowed to be wrong often. Tier two is careful, and only
+        ever sees frames tier one has already flagged.
+      </p>
+
+      <h3>Tier one &mdash; the cheap pass</h3>
+      <p>
+        Two signals, either of which is enough to promote a frame:
+      </p>
+      <ul>
+        <li><strong>Background subtraction.</strong> OpenCV's CNT subtractor, chosen because it
+        is the fastest of the <code>bgsegm</code> family on ARM. Fires when more than 10% of the
+        mask is non-zero.</li>
+        <li><strong>Luminance shift.</strong> An exponential moving average of mean frame
+        brightness with &alpha;&nbsp;=&nbsp;0.05, firing when the current frame departs from the
+        average by more than 90 grey levels.</li>
+      </ul>
+
+      <pre><code>triggered = abs(curr - last_avg_lum) &gt; LUM_THRESH
+last_avg_lum = (ALPHA * curr) + ((1 - ALPHA) * last_avg_lum)
+
+mask = fgbg.apply(gray)
+motion = (cv2.countNonZero(mask) / (640 * 480)) &gt; SENSITIVITY
+
+return (triggered or motion), gray, mask</code></pre>
+
+      <p>
+        A light switch and a person both clear this bar, and that is the intended behaviour.
+        Tier one is a filter, not a decision.
+      </p>
+
+      <h3>Tier two &mdash; entropy and persistence</h3>
+      <p>
+        Promoted frames go through three checks in order, and failing any one of them ends the
+        frame's candidacy:
+      </p>
+
+      <ol>
+        <li>
+          <strong>Shannon entropy of the moving pixels.</strong> The pixel values under the
+          motion mask are histogrammed and their entropy computed. Below 3.0, the change is
+          rejected as flat &mdash; a cloud crossing the sun changes every pixel by the same
+          amount, and carries almost no information.
+        </li>
+        <li>
+          <strong>Centroid travel.</strong> The largest contour's bounding-box centre must move
+          more than 20&nbsp;px between frames. Movement increments a persistence counter;
+          anything smaller decrements it.
+        </li>
+        <li>
+          <strong>Persistence.</strong> Fifty qualifying frames raise the event. At 15&nbsp;fps
+          that is a little over three seconds of continuous, directional movement.
+        </li>
+      </ol>
+
+      <pre><code>if last_centroid:
+    dist = sqrt((cx - lx)**2 + (cy - ly)**2)
+    if dist &gt; 20:
+        persistence_count += 1
+    else:
+        persistence_count = max(0, persistence_count - 1)
+
+if persistence_count &gt;= 50:
+    <span class="c"># raise CaptureClass(trigger="tiered_cap", duration=10.0)</span></code></pre>
+
+      <p>
+        The decay on the counter is what rejects a tree in wind. A branch oscillates around a
+        fixed point, so its centroid moves and returns; the counter climbs and falls and never
+        reaches fifty. A person walking accumulates monotonically. Losing tier one entirely
+        resets both the counter and the last known centroid to zero.
+      </p>
+
+      <div class="callout warn">
+        <span class="label">Quirk</span>
+        <p>
+          The motion ratio divides by <code>640 * 480</code> while the analysed frame is
+          640&times;360. The mask only has 230,400 pixels, so the nominal 10% threshold behaves
+          like about 13.3% of the real frame. The detector was tuned with this in place, so the
+          constant and the divisor are effectively one calibrated value rather than two
+          independent ones.
+        </p>
+      </div>
+    </section>
+
+    <section id="zone">
+      <h2>Zone monitor</h2>
+      <p>
+        This detector answers a narrower question than the motion filter: is someone standing
+        somewhere they shouldn't be. It runs in two phases.
+      </p>
+
+      <h3>Phase one &mdash; learning the zone, once</h3>
+      <p>
+        At startup it takes a single frame, converts to HSV, and thresholds for grass:
+      </p>
+
+      <pre><code>grassRange = cv2.inRange(hsv,
+                         np.array([25,  30,  20]),
+                         np.array([95, 255, 255]))</code></pre>
+
+      <p>
+        The resulting mask is dilated and morphologically opened and closed to remove speckle,
+        then contoured. Rather than keeping the largest region alone, <code>defineZone</code>
+        keeps the largest contour plus whichever of the next five has the nearest centroid to
+        it &mdash; a lawn split by a path reads as two blobs, and taking only the bigger one
+        would leave half the garden unwatched.
+      </p>
+      <p>
+        This happens exactly once. The zone is fixed for the lifetime of the process, which
+        means the detector inherits whatever the lighting was at startup.
+      </p>
+
+      <h3>Phase two &mdash; watching for feet</h3>
+      <p>
+        The steady-state loop uses GSOC background subtraction, a slower and more accurate
+        subtractor than tier one's CNT, tuned conservatively:
+      </p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Parameter</th><th class="num">Value</th><th>Effect</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>nSamples</td><td class="num">20</td><td>Background samples held per pixel</td></tr>
+            <tr><td>replaceRate</td><td class="num">0.003</td><td>How readily a sample is replaced &mdash; low, so a parked object takes a long time to become background</td></tr>
+            <tr><td>propagationRate</td><td class="num">0.01</td><td>How readily a background decision spreads to neighbours</td></tr>
+            <tr><td>hitsThreshold</td><td class="num">32</td><td>Matches needed before a pixel is treated as background</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        From the foreground mask it keeps the three largest contours, and from each of those
+        only the bottom 20 pixels of the bounding box. The reasoning is that what matters is
+        where something is standing, not how tall it is &mdash; a person leaning over the fence
+        overlaps the lawn in the mask, but their feet do not.
+      </p>
+      <p>
+        Overlap between that strip and the zone mask is measured in pixels and averaged over a
+        rolling ten-frame window, which gives the detector hysteresis:
+      </p>
+
+      <div class="kv">
+        <div><dt>Enter</dt><dd>Average overlap rises to 3 px or more &mdash; start the clock</dd></div>
+        <div><dt>Exit</dt><dd>Average overlap falls below 1 px &mdash; stop the clock</dd></div>
+        <div><dt>Fire</dt><dd>The interval between the two exceeded 2 seconds</dd></div>
+      </div>
+
+      <p>
+        Separate enter and exit thresholds stop a subject hovering at the boundary from
+        producing a burst of events. The event is tagged <code>Grass Overlap</code> and reports
+        its true measured duration rather than a fixed ten seconds.
+      </p>
+    </section>
+
+    <section id="audio">
+      <h2>Audio classifier</h2>
+      <p>
+        Sound reaches around corners and through the dark, which makes it a useful complement
+        to two detectors that both need line of sight.
+      </p>
+
+      <h3>The volume gate</h3>
+      <p>
+        Audio arrives at 16&nbsp;kHz in 4,096-sample chunks. Every chunk is appended to a
+        five-minute ring in shared memory and its RMS amplitude computed. Below an RMS of 0.08
+        &mdash; roughly 72&nbsp;dB SPL &mdash; the model is never invoked. Running a CNN
+        against silence forty times a second is exactly the kind of always-on cost the whole
+        project exists to avoid, and it is why the listener idles at under 1% CPU.
+      </p>
+
+      <h3>Feature extraction</h3>
+      <p>
+        Above the gate, the last two seconds are turned into a 128-band log-mel spectrogram.
+        The mel filterbank and the STFT are written out longhand in NumPy rather than pulled
+        from librosa &mdash; the Pi image does not need to carry a large audio library for one
+        function &mdash; then normalised to [0,&nbsp;1] and padded or cropped to exactly 98
+        time steps.
+      </p>
+
+      <div class="kv">
+        <div><dt>Sample rate</dt><dd>16,000 Hz, mono (stereo devices are averaged down)</dd></div>
+        <div><dt>Window</dt><dd>2 seconds, Hann</dd></div>
+        <div><dt>n_fft</dt><dd>2048</dd></div>
+        <div><dt>hop_length</dt><dd>327 samples, chosen to land on 98 frames</dd></div>
+        <div><dt>Mel bands</dt><dd>128</dd></div>
+        <div><dt>Model input</dt><dd>(128, 98, 1) float32</dd></div>
+      </div>
+
+      <h3>The model</h3>
+      <p>
+        A small convolutional network trained from scratch on Freesound data for this project.
+        It is not a fine-tuned YAMNet or any other pre-trained audio backbone.
+      </p>
+
+      <pre><code>models.Sequential([
+    layers.Input(shape=(128, 98, 1)),
+    layers.Conv2D(32, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Flatten(),
+    layers.Dense(64, activation='relu'),
+    layers.Dropout(0.3),
+    layers.Dense(8, activation='softmax'),
+])</code></pre>
+
+      <p>
+        The trained Keras H5 was too large to commit, so it ships as a converted TFLite file
+        and runs through a LiteRT interpreter. That conversion is why the model is on the
+        repository at all, and it also happens to be the right format for the Pi.
+      </p>
+
+      <h4>Classes</h4>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th class="num">Index</th><th>Label</th><th>Raises an event</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="num">1</td><td>Ambience</td><td>No &mdash; this is the negative class</td></tr>
+            <tr><td class="num">2</td><td>Car Screech</td><td>Yes</td></tr>
+            <tr><td class="num">3</td><td>Screaming</td><td>Yes</td></tr>
+            <tr><td class="num">4</td><td>Gunshot</td><td>Yes</td></tr>
+            <tr><td class="num">5</td><td>Glass Breaking</td><td>Yes</td></tr>
+            <tr><td class="num">6</td><td>Aggressive Knocking</td><td>Yes</td></tr>
+            <tr><td class="num">7</td><td>Dog Barking</td><td>Yes &mdash; a judgement call, included to be safe</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>From prediction to event</h3>
+      <p>
+        A concerning class above 45% confidence opens a detection rather than firing
+        immediately. While it stays open the listener tracks the peak confidence seen; when the
+        classification falls back to ambience or below threshold, the detection closes and one
+        event is emitted covering the whole span.
+      </p>
+      <p>
+        A four-second scream therefore produces one clip with the loudest, most confident moment
+        recorded in its trigger string &mdash; <code>Screaming (81.3%)</code> &mdash; not sixty
+        overlapping events. The trigger string is the only place in the system where a
+        confidence figure survives.
+      </p>
+    </section>
+
+    <section id="gpio">
+      <h2>GPIO sensors</h2>
+      <p>
+        A reed switch on BCM pin 17 and a PIR motion sensor on BCM pin 27 never raise events by
+        themselves. They are context: their state is stamped into every <code>CaptureClass</code>
+        so that downstream code knows a door was open while the clip was being recorded.
+      </p>
+      <p>
+        Both are read through <code>sensor_helper.py</code>, which uses a falling-edge interrupt
+        with a 200&nbsp;ms debounce and reports true if the pin fired within the last ten
+        seconds. Polling a pin at the moment an event is built would almost always miss the
+        edge that mattered; the ten-second window is what makes the reading useful.
+      </p>
+
+      <div class="callout">
+        <span class="label">Cross-platform</span>
+        <p>
+          The whole module is wrapped in a <code>platform.system() == "Linux"</code> check. On
+          Windows or macOS the GPIO functions are simply never defined, the calls fall through
+          the detectors' bare <code>try/except</code> blocks, and the system runs with the
+          sensor fields unset. Development on a desktop does not require stubbing anything out.
+        </p>
+      </div>
+    </section>
+
+    <div class="page-nav">
+      <a href="architecture.html"><span>Previous</span>&larr; Architecture</a>
+      <a href="compression.html"><span>Next</span>Compression &rarr;</a>
+    </div>
+
+    <footer>
+      <p>
+        Detection software by Abhiram Vadali. The audio model was trained from scratch on
+        Freesound data.
+      </p>
+      <p>
+        <a href="https://github.com/AbhiramV010/Iris-Lite">Source</a> &middot;
+        <a href="http://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>
