@@ -8,18 +8,19 @@ import os
 from datetime import datetime, timedelta
 from captureinfo import CaptureClass
 from sensor_helper import *
+from secrets_util import load_authkey
 import warnings
 import sys
 
-warnings.simplefilter('ignore', Warning) 
+warnings.simplefilter('ignore', Warning)
 SOUND_LABELS = {1: "Ambience", 2: "Car Screech", 3: "Screaming", 4: "Gunshot", 5: "Glass Breaking", 6: "Aggressive Knocking", 7: "Dog Barking"}
 SOC = [2, 3, 4, 5, 6, 7]  # ambience isn't concerning WHATSOEVER, dog barking is a grey zone, but included to be safe
 
 MODEL = os.path.join(os.path.dirname(__file__), "sound_model.tflite")
-RATE = 16000 
-CHUNK = 4096 
+RATE = 16000
+CHUNK = 4096
 ADDRESS = ('127.0.0.1', 8989)
-AUTHKEY = b'1000011'
+AUTHKEY = load_authkey()
 THRESHOLD = 0.08 # DB SPL threshold, approx 72 dB
 
 SHM_SIZE = RATE * 300 * 4 

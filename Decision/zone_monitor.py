@@ -6,11 +6,13 @@ from multiprocessing import shared_memory
 import datetime
 from collections import deque
 from sensor_helper import *
+from secrets_util import load_authkey
 import time
 import warnings
 
 W, H = 1920, 1080
 SHM_NAME = "iris_live_frame" # pull from the shm
+AUTHKEY = load_authkey()
 
 TARGET_FPS = 15
 FRAME_INTERVAL = 1.0 / TARGET_FPS
@@ -118,7 +120,7 @@ try:
         if alert:
             try: 
                 address = ('127.0.0.1', 8989)
-                with Client(address, authkey=b'1000011') as conn:
+                with Client(address, authkey=AUTHKEY) as conn:
                     conn.send(alert)
             except: pass
         if cv2.waitKey(1) & 0xFF == ord('x'): break

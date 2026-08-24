@@ -1,0 +1,112 @@
+#!/bin/bash
+# Iris-Lite runtime launcher.
+#
+# Runs everything except the main camera feed in the background; main.py
+# (which opens the "Iris-Lite Camera Feed" window) stays in the foreground
+# so this is the one thing the user actually watches. Always run out of
+# this checkout by absolute path, and the compression engine is rebuilt
+# automatically whenever its source is newer than the last build, so
+# editing Compression/* or Decision/*.py keeps working without reinstalling.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+LOG_DIR="$REPO_ROOT/log"
+BUILD_DIR="$REPO_ROOT/Compression/build"
+BINARY="$BUILD_DIR/PerceptualCompressor"
+mkdir -p "$LOG_DIR"
+
+PIDS=()
+
+cleanup() {
+    echo ""
+    echo "Shutting down Iris-Lite..."
+    for pid in "${PIDS[@]:-}"; do
+        [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
+    done
+    wait 2>/dev/null
+    for shm in iris_live_frame iris_indices iris_concern_indices \
+               iris_frame_buffer_data iris_frame_sizes iris_frame_head_tail \
+               iris_lite_audio; do
+        rm -f "/dev/shm/$shm" 2>/dev/null
+    done
+    echo "Iris-Lite stopped."
+}
+trap cleanup EXIT INT TERM
+
+# ---- rebuild the compression engine if its source changed since the last build ----
+rebuild_if_needed() {
+    local needs_build=0
+
+    if [[ ! -x "$BINARY" ]]; then
+        needs_build=1
+    else
+        while IFS= read -r -d '' src; do
+            if [[ "$src" -nt "$BINARY" ]]; then
+                needs_build=1
+                break
+            fi
+        done < <(find "$REPO_ROOT/Compression/src" "$REPO_ROOT/Compression/include" \
+                      -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 2>/dev/null)
+        [[ "$REPO_ROOT/Compression/CMakeLists.txt" -nt "$BINARY" ]] && needs_build=1
+    fi
+
+    if [[ "$needs_build" -eq 1 ]]; then
+        echo "Compression engine source changed - rebuilding..."
+        cmake -S "$REPO_ROOT/Compression" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release \
+            >>"$LOG_DIR/build.log" 2>&1 && \
+        cmake --build "$BUILD_DIR" -j"$(nproc 2>/dev/null || echo 2)" \
+            >>"$LOG_DIR/build.log" 2>&1
+        if [[ $? -ne 0 || ! -x "$BINARY" ]]; then
+            echo "Build failed - see $LOG_DIR/build.log"
+            exit 1
+        fi
+    fi
+}
+
+wait_for_shm() {
+    local name="$1" timeout="${2:-20}" waited=0
+    while [[ ! -e "/dev/shm/$name" ]]; do
+        sleep 0.5
+        waited=$((waited + 1))
+        if (( waited >= timeout * 2 )); then
+            echo "Warning: timed out waiting for shared memory '$name'"
+            return 1
+        fi
+    done
+}
+
+echo "Starting Iris-Lite..."
+rebuild_if_needed
+
+# Pre-authenticate sudo once, up front, so the backgrounded compression
+# engine (which needs elevated access to the hardware encoder) never blocks
+# on a password prompt that nobody can see.
+sudo -v || { echo "sudo authentication required to run the compression engine"; exit 1; }
+( while true; do sudo -v; sleep 60; done ) &
+SUDO_KEEPALIVE_PID=$!
+PIDS+=("$SUDO_KEEPALIVE_PID")
+
+python3 "$REPO_ROOT/Decision/startCamera.py" >>"$LOG_DIR/startCamera.log" 2>&1 &
+PIDS+=("$!")
+
+wait_for_shm "iris_live_frame" 20
+
+python3 "$REPO_ROOT/Decision/detector_pipeline.py" >>"$LOG_DIR/detector_pipeline.log" 2>&1 &
+PIDS+=("$!")
+
+python3 "$REPO_ROOT/Decision/listener.py" >>"$LOG_DIR/listener.log" 2>&1 &
+PIDS+=("$!")
+
+python3 "$REPO_ROOT/Decision/zone_monitor.py" >>"$LOG_DIR/zone_monitor.log" 2>&1 &
+PIDS+=("$!")
+
+( cd "$REPO_ROOT/Compression" && sudo "$BINARY" >>"$LOG_DIR/compressor.log" 2>&1 ) &
+PIDS+=("$!")
+
+echo "Background services started (logs in $LOG_DIR). Launching main camera feed..."
+sleep 1
+
+# Foreground: this is the process the user watches. Its exit (window closed,
+# 'x' pressed, or Ctrl+C) triggers cleanup() and tears everything else down.
+python3 "$REPO_ROOT/Decision/main.py"

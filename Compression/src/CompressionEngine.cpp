@@ -279,7 +279,10 @@ void CompressionEngine::processEvent(const EventWindow& event)
     }
 
     if (encoderOpened)
+    {
         encoder->close();
+        storage->encryptFile(path);
+    }
 
     logInfo(
         "EVENT END | " + path +

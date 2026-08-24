@@ -5,6 +5,7 @@ from captureinfo import CaptureClass
 from multiprocessing.connection import Client
 from multiprocessing import shared_memory
 from sensor_helper import *
+from secrets_util import load_authkey
 import time
 import warnings
 
@@ -26,7 +27,7 @@ LUM_THRESH = 90
 ALPHA = 0.05        
 
 ADDRESS = ('127.0.0.1', 8989)
-AUTHKEY = b'1000011'
+AUTHKEY = load_authkey()
 
 global persistence_count, last_centroid # keep the global here
 

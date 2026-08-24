@@ -34,6 +34,9 @@ find_package(Threads REQUIRED)
 # ---------------- OPENCV ----------------
 find_package(OpenCV REQUIRED)
 
+# ---------------- OPENSSL (clip encryption) ----------------
+find_package(OpenSSL REQUIRED)
+
 # ---------------- INCLUDE PATHS ----------------
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
@@ -66,6 +69,7 @@ add_executable(PerceptualCompressor ${SOURCES})
 target_link_libraries(PerceptualCompressor
     ${OpenCV_LIBS}
     Threads::Threads
+    OpenSSL::Crypto
     rt
 )
 

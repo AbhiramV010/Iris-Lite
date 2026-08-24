@@ -6,17 +6,18 @@ import threading
 import time
 import datetime
 from captureinfo import CaptureClass
+from secrets_util import load_authkey
 import warnings
 
-FPS = 24  
-BUFFER_MINUTES = 5 
-FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES 
-SLOT_SIZE = 200000 
+FPS = 24
+BUFFER_MINUTES = 5
+FRAME_BUFFER_SIZE = FPS * 60 * BUFFER_MINUTES
+SLOT_SIZE = 200000
 SHM_NAME = "iris_live_frame"
 SHM_NAME_INDICE = "iris_indices"
 CONCERN_SHM = "iris_concern_indices"
 ADDRESS = ('127.0.0.1', 8989)
-AUTHKEY = b'1000011'
+AUTHKEY = load_authkey()
 
 capture_queue = []
 
