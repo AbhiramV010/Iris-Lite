@@ -145,8 +145,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
 {
     std::string path = storage->buildPath(
         event.startFrame,
-        event.endFrame,
-        event.trigger
+        event.endFrame
     );
 
     logInfo(
@@ -281,7 +280,7 @@ void CompressionEngine::processEvent(const EventWindow& event)
     if (encoderOpened)
     {
         encoder->close();
-        storage->encryptFile(path);
+        storage->encryptFile(path, event.trigger);
     }
 
     logInfo(

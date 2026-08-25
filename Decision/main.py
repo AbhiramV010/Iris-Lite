@@ -1,12 +1,13 @@
 import cv2
 import numpy as np
+import struct
 from multiprocessing import shared_memory
 from multiprocessing.connection import Listener
 import threading
 import time
 import datetime
 from captureinfo import CaptureClass
-from secrets_util import load_authkey
+from secrets_util import load_authkey, decrypt_capture
 import warnings
 
 FPS = 24
@@ -19,13 +20,31 @@ CONCERN_SHM = "iris_concern_indices"
 ADDRESS = ('127.0.0.1', 8989)
 AUTHKEY = load_authkey()
 
+# Mirrors Compression/src/main.cpp's `SharedEventBuffer { uint64_t startFrame;
+# uint64_t endFrame; char trigger[64]; }` exactly (no padding: both uint64
+# fields are already 8-byte aligned, and 80 is a multiple of 8) so the two
+# languages agree on the layout of the "iris_concern_indices" segment.
+CONCERN_STRUCT = struct.Struct("<QQ64s")
+
+# Pickled CaptureClass objects are well under a few hundred bytes; cap well
+# above that so a malformed/hostile sender can't force an unbounded
+# allocation before decrypt_capture() even runs.
+MAX_EVENTBUS_MSG = 4096
+
 capture_queue = []
 
 def findEvents():
     with Listener(ADDRESS, authkey=AUTHKEY) as listener:
         while True:
             with listener.accept() as conn:
-                obj = conn.recv()
+                try:
+                    blob = conn.recv_bytes(maxlength=MAX_EVENTBUS_MSG)
+                except (OSError, EOFError):
+                    continue # oversized, truncated, or otherwise unusable message
+                try:
+                    obj = decrypt_capture(blob, AUTHKEY)
+                except Exception:
+                    continue # tampered/malformed payload, drop it
                 if isinstance(obj, CaptureClass):
                         print(str(obj)) # print the __str__ representation, defined in captureinfo.py
                         capture_queue.append(obj)
@@ -51,7 +70,7 @@ if __name__ == "__main__":
     stream_view = np.ndarray((1080, 1920, 3), dtype=np.uint8, buffer=shm.buf)
 
     shm_names = ["iris_frame_buffer_data", "iris_frame_sizes", "iris_frame_head_tail", CONCERN_SHM, SHM_NAME_INDICE]
-    sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16, 16, FRAME_BUFFER_SIZE * 16]
+    sizes = [FRAME_BUFFER_SIZE * SLOT_SIZE, FRAME_BUFFER_SIZE * 4, 16, CONCERN_STRUCT.size, FRAME_BUFFER_SIZE * 16]
     shms = []
 
     for name, size in zip(shm_names, sizes):
@@ -62,7 +81,7 @@ if __name__ == "__main__":
     frame_buffer = np.ndarray((FRAME_BUFFER_SIZE, SLOT_SIZE), dtype=np.uint8, buffer=shms[0].buf)
     frame_sizes = np.ndarray((FRAME_BUFFER_SIZE,), dtype=np.uint32, buffer=shms[1].buf)
     head_tail = np.ndarray((2,), dtype=np.uint64, buffer=shms[2].buf)
-    concern_indices = np.ndarray((2,), dtype=np.uint64, buffer=shms[3].buf)
+    concern_buf = shms[3].buf
     full_indices = np.ndarray((FRAME_BUFFER_SIZE, 2), dtype=np.uint64, buffer=shms[4].buf)
     
     head_tail[0] = head_tail[1] = 0
@@ -90,8 +109,12 @@ if __name__ == "__main__":
                 start_offset = int((now - start_ts) * FPS) + padding_frames
                 end_offset = int((now - end_ts) * FPS) - padding_frames
 
-                concern_indices[0] = (curr_head - max(0, start_offset)) % FRAME_BUFFER_SIZE
-                concern_indices[1] = (curr_head - max(0, end_offset)) % FRAME_BUFFER_SIZE
+                start_idx = (curr_head - max(0, start_offset)) % FRAME_BUFFER_SIZE
+                end_idx = (curr_head - max(0, end_offset)) % FRAME_BUFFER_SIZE
+                # Truncate to 63 bytes so the struct's zero-padding always
+                # leaves the C string NUL-terminated within char[64].
+                trigger_bytes = event.trigger.encode("utf-8", "replace")[:63]
+                CONCERN_STRUCT.pack_into(concern_buf, 0, start_idx, end_idx, trigger_bytes)
             except: pass
 
         _, compressed = cv2.imencode('.jpg', stream_view, [cv2.IMWRITE_JPEG_QUALITY, 45])

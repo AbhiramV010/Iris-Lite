@@ -17,7 +17,7 @@ LOG_FILE="$REPO_ROOT/log/install.log"
 # ---------------- progress bar ----------------
 # Real, step-driven progress: the bar only advances after a step's command
 # has actually exited 0. Nothing here is a fixed sleep/timer.
-TOTAL_STEPS=9
+TOTAL_STEPS=10
 CURRENT_STEP=0
 
 draw_bar() {
@@ -105,8 +105,15 @@ step "Building compression engine (this builds from Compression/src, so edits th
 # ---------------- 7. directories ----------------
 setup_dirs() {
     mkdir -p "$REPO_ROOT/log"
+    # Logs record trigger types and timestamps (an occupancy pattern),
+    # unlike clips they aren't encrypted, so at least keep other local
+    # accounts out.
+    chmod 700 "$REPO_ROOT/log"
     sudo mkdir -p /clipDrive/clips
     sudo chown "$(id -u):$(id -g)" /clipDrive/clips
+    # Clips are AES-256-GCM encrypted at rest, but there's no reason for
+    # other local accounts to even enumerate filenames/timestamps.
+    chmod 700 /clipDrive/clips
 }
 step "Preparing storage & log directories" setup_dirs
 
@@ -114,23 +121,35 @@ step "Preparing storage & log directories" setup_dirs
 # Generated once per install, never overwritten: the clip key must stay
 # stable or previously-encrypted footage becomes undecryptable, and the
 # event-bus key must stay stable while any Iris-Lite process is running.
+#
+# The raw keys are never written to the SD card: tools/keywrap.py generates
+# them in memory and immediately passphrase-wraps them (scrypt + AES-256-GCM)
+# before anything touches disk, so losing/imaging the card alone isn't
+# enough to recover usable keys. bin/iris-lite prompts for the same
+# passphrase at each launch to unwrap them into a tmpfs-only runtime dir.
 SECRETS_DIR="/etc/iris-lite"
 setup_secrets() {
     sudo mkdir -p "$SECRETS_DIR"
     sudo chown "$(id -u):$(id -g)" "$SECRETS_DIR"
     chmod 700 "$SECRETS_DIR"
 
-    if [[ ! -f "$SECRETS_DIR/clip.key" ]]; then
-        (umask 077 && openssl rand -out "$SECRETS_DIR/clip.key" 32)
-    fi
-    if [[ ! -f "$SECRETS_DIR/eventbus.key" ]]; then
-        (umask 077 && openssl rand -out "$SECRETS_DIR/eventbus.key" 32)
-    fi
-    chmod 600 "$SECRETS_DIR"/clip.key "$SECRETS_DIR"/eventbus.key
+    python3 "$REPO_ROOT/tools/keywrap.py" wrap-all "$SECRETS_DIR"
+    chmod 600 "$SECRETS_DIR"/clip.key.enc "$SECRETS_DIR"/eventbus.key.enc
 }
 step "Generating encryption keys" setup_secrets
 
-# ---------------- 9. install launcher command ----------------
+# ---------------- 9. hardware encoder access ----------------
+# PerceptualCompressor talks to the v4l2 h264_v4l2m2m encoder device
+# directly. Rather than running the whole engine as root just for that -
+# which also means `sudo` execs a binary rebuilt from a source tree this
+# same user can write to, i.e. any compromise of that checkout is a
+# guaranteed root exploit - grant the narrower device access instead.
+grant_hw_access() {
+    sudo usermod -aG video "$(id -un)"
+}
+step "Granting hardware encoder access (video group)" grant_hw_access
+
+# ---------------- 10. install launcher command ----------------
 install_launcher() {
     chmod +x "$REPO_ROOT/bin/iris-lite"
     # The installed command is a thin wrapper that always execs the script
@@ -146,4 +165,8 @@ EOF
 step "Installing 'iris-lite' command" install_launcher
 
 echo ""
-echo "Install complete. Run 'iris-lite' (or bin/iris-lite from this repo) to start."
+echo "Install complete."
+echo "NOTE: you were just added to the 'video' group so the compression engine"
+echo "can reach the hardware encoder without root. Log out and back in (or"
+echo "reboot) before running 'iris-lite' for the first time, otherwise group"
+echo "membership won't have taken effect yet and the encoder will fail to open."

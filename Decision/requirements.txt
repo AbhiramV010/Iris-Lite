@@ -1,0 +1,6 @@
+opencv-contrib-python
+numpy
+pyaudio
+ai-edge-litert
+cryptography
+RPi.GPIO; platform_system == "Linux"

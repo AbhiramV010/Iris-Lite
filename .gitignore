@@ -8,3 +8,4 @@ training_data/
 .vs/
 *.FCBak
 bench.*
+log/*.log

@@ -6,7 +6,7 @@ from multiprocessing import shared_memory
 import datetime
 from collections import deque
 from sensor_helper import *
-from secrets_util import load_authkey
+from secrets_util import load_authkey, encrypt_capture
 import time
 import warnings
 
@@ -121,7 +121,7 @@ try:
             try: 
                 address = ('127.0.0.1', 8989)
                 with Client(address, authkey=AUTHKEY) as conn:
-                    conn.send(alert)
+                    conn.send_bytes(encrypt_capture(alert, AUTHKEY))
             except: pass
         if cv2.waitKey(1) & 0xFF == ord('x'): break
 

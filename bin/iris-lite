@@ -14,7 +14,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_DIR="$REPO_ROOT/log"
 BUILD_DIR="$REPO_ROOT/Compression/build"
 BINARY="$BUILD_DIR/PerceptualCompressor"
+SECRETS_DIR="/etc/iris-lite"
 mkdir -p "$LOG_DIR"
+# Logs record trigger types and timestamps (an occupancy pattern), unlike
+# clips they aren't encrypted, so at least keep other local accounts out.
+chmod 700 "$LOG_DIR"
 
 PIDS=()
 
@@ -30,6 +34,9 @@ cleanup() {
                iris_lite_audio; do
         rm -f "/dev/shm/$shm" 2>/dev/null
     done
+    # The unwrapped raw keys only ever live here (tmpfs), never on the SD
+    # card - wipe them the moment this run ends.
+    [[ -n "${RUNTIME_KEY_DIR:-}" ]] && rm -rf "$RUNTIME_KEY_DIR"
     echo "Iris-Lite stopped."
 }
 trap cleanup EXIT INT TERM
@@ -79,13 +86,29 @@ wait_for_shm() {
 echo "Starting Iris-Lite..."
 rebuild_if_needed
 
-# Pre-authenticate sudo once, up front, so the backgrounded compression
-# engine (which needs elevated access to the hardware encoder) never blocks
-# on a password prompt that nobody can see.
-sudo -v || { echo "sudo authentication required to run the compression engine"; exit 1; }
-( while true; do sudo -v; sleep 60; done ) &
-SUDO_KEEPALIVE_PID=$!
-PIDS+=("$SUDO_KEEPALIVE_PID")
+# The compression engine talks to the v4l2 hardware encoder directly, which
+# needs `video` group membership (granted by install.sh) rather than root -
+# running it as root would mean `sudo` execs a binary rebuilt from a source
+# tree this same user can write to, i.e. any compromise of this checkout is
+# a guaranteed root exploit.
+if ! id -nG "$(id -un)" | tr ' ' '\n' | grep -qx video; then
+    echo "Warning: $(id -un) is not in the 'video' group - the hardware encoder"
+    echo "will likely fail to open. Run install.sh, then log out and back in."
+fi
+
+# clip.key/eventbus.key are stored passphrase-wrapped on the SD card
+# (tools/keywrap.py, set up by install.sh); unwrap them once here into a
+# tmpfs-only directory so the raw keys never touch persistent storage.
+# Every child process below inherits IRIS_LITE_*_KEY_PATH from this shell's
+# environment.
+RUNTIME_KEY_DIR="$(mktemp -d /dev/shm/iris-lite-runtime.XXXXXX)"
+echo "Unlocking encryption keys..."
+if ! python3 "$REPO_ROOT/tools/keywrap.py" unwrap-all "$SECRETS_DIR" "$RUNTIME_KEY_DIR"; then
+    echo "Failed to unlock encryption keys (wrong passphrase, or install.sh hasn't been run)."
+    exit 1
+fi
+export IRIS_LITE_CLIP_KEY_PATH="$RUNTIME_KEY_DIR/clip.key"
+export IRIS_LITE_EVENTBUS_KEY_PATH="$RUNTIME_KEY_DIR/eventbus.key"
 
 python3 "$REPO_ROOT/Decision/startCamera.py" >>"$LOG_DIR/startCamera.log" 2>&1 &
 PIDS+=("$!")
@@ -101,7 +124,7 @@ PIDS+=("$!")
 python3 "$REPO_ROOT/Decision/zone_monitor.py" >>"$LOG_DIR/zone_monitor.log" 2>&1 &
 PIDS+=("$!")
 
-( cd "$REPO_ROOT/Compression" && sudo "$BINARY" >>"$LOG_DIR/compressor.log" 2>&1 ) &
+( cd "$REPO_ROOT/Compression" && "$BINARY" >>"$LOG_DIR/compressor.log" 2>&1 ) &
 PIDS+=("$!")
 
 echo "Background services started (logs in $LOG_DIR). Launching main camera feed..."

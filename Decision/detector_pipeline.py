@@ -5,7 +5,7 @@ from captureinfo import CaptureClass
 from multiprocessing.connection import Client
 from multiprocessing import shared_memory
 from sensor_helper import *
-from secrets_util import load_authkey
+from secrets_util import load_authkey, encrypt_capture
 import time
 import warnings
 
@@ -103,7 +103,7 @@ try:
                         trigger=f"tiered_cap", duration=10.0, isMotionSensor=check_gpio(27), isDoorSensor=check_gpio(17))
                     try:
                         with Client(ADDRESS, authkey=AUTHKEY) as conn:
-                            conn.send(new_capture)
+                            conn.send_bytes(encrypt_capture(new_capture, AUTHKEY))
                         persistence_count = 0 # reset perst ct
                     except:
                         raise ConnectionRefusedError("The sending of CaptureClass failed")

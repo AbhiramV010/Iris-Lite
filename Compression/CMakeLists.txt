@@ -15,7 +15,7 @@ endif()
 # ---------------- SAFE OPTIMIZATION FLAGS ----------------
 # Let compiler auto-detect Pi CPU instead of forcing broken flags
 set(CMAKE_CXX_FLAGS_RELEASE
-    "-O3 -mcpu=cortex-a72 -mtune=cortex-a72"
+    "-O3 -mcpu=cortex-a72 -mtune=cortex-a72 -D_FORTIFY_SOURCE=2"
 )
 
 set(CMAKE_CXX_FLAGS_DEBUG
@@ -27,6 +27,22 @@ set(CMAKE_CXX_FLAGS_DEBUG
 # - Removed: -mfloat-abi=hard (handled by OS/toolchain)
 # - Kept: strong optimization without breaking compatibility
 # - No -ffast-math (good call — keeps scoring stable)
+# - _FORTIFY_SOURCE=2 needs -O1+, which Release always has
+
+# ---------------- BINARY HARDENING ----------------
+# This binary parses untrusted camera/audio-derived data and handles the
+# clip encryption key in memory, so standard exploit-mitigation hardening
+# is worth the (negligible) runtime cost on top of -O3.
+add_compile_options(
+    -fstack-protector-strong
+    -fPIE
+    -Wformat -Wformat-security
+)
+add_link_options(
+    -pie
+    -Wl,-z,relro,-z,now
+    -Wl,-z,noexecstack
+)
 
 # ---------------- THREAD SUPPORT ----------------
 find_package(Threads REQUIRED)
