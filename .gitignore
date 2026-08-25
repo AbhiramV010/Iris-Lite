@@ -7,3 +7,4 @@ test.*
 training_data/
 .vs/
 *.FCBak
+bench.*
